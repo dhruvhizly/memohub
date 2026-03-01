@@ -1,0 +1,1 @@
+uvicorn src.server:app --host localhost --port 8000 --ssl-keyfile ./localhost+2-key.pem --ssl-certfile ./localhost+2.pem --loop asyncio --reload
