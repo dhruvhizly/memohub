@@ -4,9 +4,9 @@ from io import BytesIO
 from src.db.db import get_db
 from src.models import Media
 from sqlalchemy.orm import Session
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from src.utils.auth_utils import require_authentication
-from src.utils.media_utils import sanitize_filename
+from src.utils.media_utils import sanitize_filename, generate_video_thumbnail
 from src.core.config import UPLOAD_DIR, MAX_UPLOAD, AES_KEY
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import APIRouter, UploadFile,  Request, HTTPException, Response, Depends, Query, File, BackgroundTasks
@@ -15,6 +15,8 @@ from cryptography.hazmat.backends import default_backend
 from sqlalchemy.exc import SQLAlchemyError
 
 router = APIRouter(prefix="/media", tags=["media"])
+
+print("Root listing:", os.listdir("/"))
 
 MAX_FILE_SIZE = 1 * 1024 * 1024 * 1024  # 1GB limit
 ALLOWED_MIME_TYPES = [
@@ -27,96 +29,9 @@ IMAGE_FORMATS = {
     "image/jpeg": "JPEG",
     "image/png": "PNG",
 }
-# @router.post("/upload")
-# async def upload_media(
-#     request: Request,
-#     response: Response,
-#     files: list[UploadFile] = File(...),
-#     db: Session = Depends(get_db),
-# ):
-#     require_authentication(request, response, db)
-#     user_id = request.state.userid
-
-#     if not files:
-#         raise HTTPException(status_code=400, detail="No files provided")
-    
-#     if len(files) > MAX_UPLOAD:
-#         raise HTTPException(status_code=400, detail=f"Max {MAX_UPLOAD} files allowed")
-
-#     user_dir = os.path.join(UPLOAD_DIR, str(user_id))
-#     os.makedirs(user_dir, exist_ok=True)
-
-#     uploaded_media = []
-
-#     for file in files:
-#         try:
-#             file_content = await file.read()
-#         except Exception:
-#              raise HTTPException(status_code=400, detail="Error reading file")
-
-#         if len(file_content) > MAX_FILE_SIZE:
-#             raise HTTPException(
-#                 status_code=413, 
-#                 detail=f"File {file.filename} exceeds maximum size of 10MB"
-#             )
-
-#         mime_type = magic.from_buffer(file_content, mime=True) 
-        
-#         if mime_type not in ALLOWED_MIME_TYPES:
-#              raise HTTPException(
-#                 status_code=400, 
-#                 detail=f"Invalid file content. Detected: {mime_type}"
-#             )
-
-#         if mime_type.startswith("image/"):
-#             try:
-#                 img = Image.open(BytesIO(file_content))
-#                 img.verify()
-                
-#                 img = Image.open(BytesIO(file_content))
-#                 img = ImageOps.exif_transpose(img)
-#                 buffer = BytesIO()
-#                 img.save(buffer, format=img.format) 
-#                 file_content = buffer.getvalue()
-#             except Exception as e:
-#                 raise HTTPException(status_code=400, detail="Invalid image file")
-
-#         aesgcm = AESGCM(AES_KEY)
-#         nonce = secrets.token_bytes(12)
-#         ciphertext = aesgcm.encrypt(nonce, file_content, None)
-
-#         file_id = str(uuid.uuid4())
-#         stored_path = os.path.join(user_dir, file_id)
-
-#         with open(stored_path, "wb") as f:
-#             f.write(ciphertext)
-
-#         clean_filename = sanitize_filename(file.filename)
-
-#         media = Media(
-#             id=file_id,
-#             orig_name=clean_filename,
-#             content_type=mime_type,
-#             stored_path=stored_path,
-#             nonce=nonce,
-#             size=len(file_content),
-#             owner_id=user_id
-#         )
-#         db.add(media)
-#         db.commit() 
-#         db.refresh(media)
-#         uploaded_media.append({
-#             "media_id": media.id,
-#             "filename": media.orig_name,
-#             "type": media.content_type,
-#             "size": media.size,
-#             "uploaded_at": media.uploaded_at
-#         })
-
-#     return {"uploaded": uploaded_media}
 
 @router.post("/upload")
-async def upload_media(
+def upload_media(
     request: Request,
     response: Response,
     files: list[UploadFile] = File(...),
@@ -128,61 +43,47 @@ async def upload_media(
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
-    if len(files) > MAX_UPLOAD:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Max {MAX_UPLOAD} files allowed"
-        )
-
     user_dir = os.path.join(UPLOAD_DIR, str(user_id))
     os.makedirs(user_dir, exist_ok=True)
 
     uploaded_media = []
 
     for file in files:
-        try:
-            file_content = await file.read()
-        except Exception:
-            raise HTTPException(status_code=400, detail="Error reading file")
+        thumb_content = None
+        file.file.seek(0)
+        file_content = file.file.read()
 
-        if len(file_content) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File {file.filename} exceeds maximum size of 10MB"
-            )
-
-        mime_type = magic.from_buffer(file_content, mime=True)
-        print(mime_type)
+        mime_type = magic.from_buffer(file_content[:2048], mime=True)
 
         if mime_type not in ALLOWED_MIME_TYPES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid file content. Detected: {mime_type}"
-            )
+            raise HTTPException(400, f"Invalid file content. Detected: {mime_type}")
 
+        # IMAGE
         if mime_type.startswith("image/"):
-            try:
-                img = Image.open(BytesIO(file_content))
-                img.verify()
+            img = Image.open(BytesIO(file_content))
+            img.verify()
+            img = Image.open(BytesIO(file_content))
 
-                img = Image.open(BytesIO(file_content))
+            if mime_type in ("image/jpeg", "image/png"):
+                img = ImageOps.exif_transpose(img)
 
-                if mime_type in ("image/jpeg", "image/png"):
-                    img = ImageOps.exif_transpose(img)
+            buffer = BytesIO()
+            fmt = IMAGE_FORMATS.get(mime_type, "JPEG")
+            if fmt == "JPEG":
+                img = img.convert("RGB")
+            img.save(buffer, format=fmt)
+            file_content = buffer.getvalue()
 
-                    buffer = BytesIO()
-                    img.save(buffer, format=IMAGE_FORMATS[mime_type])
-                    file_content = buffer.getvalue()
-            except Exception as e:
-                print(e)
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid or corrupted image file: {e}"
-                )
+            img.thumbnail((300, 300))
+            thumb_buffer = BytesIO()
+            img.save(thumb_buffer, format=fmt)
+            thumb_content = thumb_buffer.getvalue()
 
-        # -----------------------------
-        # Encrypt file
-        # -----------------------------
+        # VIDEO
+        elif mime_type.startswith("video/"):
+            thumb_content = generate_video_thumbnail(file_content)
+
+        # ENCRYPT
         aesgcm = AESGCM(AES_KEY)
         nonce = secrets.token_bytes(12)
         ciphertext = aesgcm.encrypt(nonce, file_content, None)
@@ -193,11 +94,15 @@ async def upload_media(
         with open(stored_path, "wb") as f:
             f.write(ciphertext)
 
-        clean_filename = sanitize_filename(file.filename)
+        if thumb_content:
+            thumb_nonce = secrets.token_bytes(12)
+            thumb_cipher = aesgcm.encrypt(thumb_nonce, thumb_content, None)
+            with open(stored_path + ".thumb", "wb") as f:
+                f.write(thumb_nonce + thumb_cipher)
 
         media = Media(
             id=file_id,
-            orig_name=clean_filename,
+            orig_name=sanitize_filename(file.filename),
             content_type=mime_type,
             stored_path=stored_path,
             nonce=nonce,
@@ -218,6 +123,62 @@ async def upload_media(
         })
 
     return {"uploaded": uploaded_media}
+
+@router.get("/thumbnail/{media_id}")
+def get_thumbnail(
+    media_id: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db)
+):
+    require_authentication(request, response, db)
+    user_id = request.state.userid
+
+    media = db.query(Media).filter(Media.id == media_id).first()
+    if not media:
+        raise HTTPException(404, "Media not found")
+    if media.owner_id != user_id:
+        raise HTTPException(403, "Forbidden")
+
+    thumb_path = media.stored_path + ".thumb"
+
+    if not os.path.exists(thumb_path):
+        aesgcm = AESGCM(AES_KEY)
+
+        with open(media.stored_path, "rb") as f:
+            enc_data = f.read()
+
+        original_data = aesgcm.decrypt(media.nonce, enc_data, None)
+
+        thumb_data = None
+
+        if media.content_type.startswith("image/"):
+            img = Image.open(BytesIO(original_data))
+            img.thumbnail((300, 300))
+            buffer = BytesIO()
+            img.save(buffer, format="JPEG")
+            thumb_data = buffer.getvalue()
+
+        elif media.content_type.startswith("video/"):
+            thumb_data = generate_video_thumbnail(original_data)
+
+        if not thumb_data:
+            return RedirectResponse(url=f"/api/v1/media/view/{media_id}")
+
+        thumb_nonce = secrets.token_bytes(12)
+        thumb_enc = aesgcm.encrypt(thumb_nonce, thumb_data, None)
+
+        with open(thumb_path, "wb") as f:
+            f.write(thumb_nonce + thumb_enc)
+
+    def iter_thumb():
+        with open(thumb_path, "rb") as f:
+            nonce = f.read(12)
+            enc_data = f.read()
+            aesgcm = AESGCM(AES_KEY)
+            yield aesgcm.decrypt(nonce, enc_data, None)
+
+    return StreamingResponse(iter_thumb(), media_type="image/jpeg")
 
 
 @router.get("/view/{media_id}")
@@ -261,7 +222,7 @@ def view_media(
     chunk_size_to_send = (end - start) + 1
 
     def range_decrypt_streamer():
-        CHUNK_SIZE = 64 * 1024
+        CHUNK_SIZE = 1024 * 1024
         
         with open(file_path, "rb") as f:
             f.seek(-TAG_SIZE, 2)
@@ -319,6 +280,8 @@ def view_media(
         strm_resp.headers.append("set-cookie", cookie)
 
     return strm_resp
+
+
 
 
 @router.get("/")
@@ -403,7 +366,7 @@ def download_media(
     content_length = file_size - TAG_SIZE
 
     def download_streamer():
-        CHUNK_SIZE = 64 * 1024 
+        CHUNK_SIZE = 1024 * 1024
         
         with open(file_path, "rb") as f:
             f.seek(-TAG_SIZE, 2)
@@ -453,7 +416,7 @@ def download_media(
     return strm_resp
 
 @router.delete("/delete")
-async def delete_media(
+def delete_media(
     media_ids: list[str],
     request: Request,
     response: Response,
@@ -478,6 +441,7 @@ async def delete_media(
     # Extract paths and IDs before deleting from DB
     file_paths = [m.stored_path for m in media_list]
     deleted_ids = [m.id for m in media_list]
+    file_paths.extend([p + ".thumb" for p in file_paths])
 
     try:
         # 2. Database transaction (Atomic)
@@ -504,5 +468,4 @@ def bulk_file_cleanup(paths: list[str]):
                 os.remove(path)
         except Exception as e:
             print(f"Cleanup failed for path {path}: {e}")
-
 
