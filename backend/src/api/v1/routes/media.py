@@ -16,8 +16,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 router = APIRouter(prefix="/media", tags=["media"])
 
-print("Root listing:", os.listdir("/"))
-
 MAX_FILE_SIZE = 1 * 1024 * 1024 * 1024  # 1GB limit
 ALLOWED_MIME_TYPES = [
     "image/jpeg", 
@@ -29,11 +27,13 @@ IMAGE_FORMATS = {
     "image/jpeg": "JPEG",
     "image/png": "PNG",
 }
+CHUNK_SIZE = 64 * 1024  # 64KB chunks for streaming
 
 @router.post("/upload")
 def upload_media(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
@@ -49,17 +49,32 @@ def upload_media(
     uploaded_media = []
 
     for file in files:
-        thumb_content = None
+        # Read header for MIME detection without loading full file
+        header = file.file.read(2048)
+        mime_type = magic.from_buffer(header, mime=True)
+        
+        # Reset file pointer to start, but we will handle the header in the stream
         file.file.seek(0)
-        file_content = file.file.read()
-
-        mime_type = magic.from_buffer(file_content[:2048], mime=True)
 
         if mime_type not in ALLOWED_MIME_TYPES:
             raise HTTPException(400, f"Invalid file content. Detected: {mime_type}")
 
+        file_id = str(uuid.uuid4())
+        stored_path = os.path.join(user_dir, file_id)
+        
+        # Use AES-CTR for seekability (Lightning fast random access)
+        # Nonce for CTR is 16 bytes (block size)
+        nonce = secrets.token_bytes(16)
+        cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(nonce), backend=default_backend())
+        encryptor = cipher.encryptor()
+        
+        file_size = 0
+        thumb_content = None
+
         # IMAGE
         if mime_type.startswith("image/"):
+            # Images are small enough to process in memory usually
+            file_content = file.file.read()
             img = Image.open(BytesIO(file_content))
             img.verify()
             img = Image.open(BytesIO(file_content))
@@ -72,8 +87,14 @@ def upload_media(
             if fmt == "JPEG":
                 img = img.convert("RGB")
             img.save(buffer, format=fmt)
-            file_content = buffer.getvalue()
+            processed_content = buffer.getvalue()
+            file_size = len(processed_content)
 
+            # Encrypt and write image
+            with open(stored_path, "wb") as f:
+                f.write(encryptor.update(processed_content) + encryptor.finalize())
+
+            # Generate thumbnail immediately for images
             img.thumbnail((300, 300))
             thumb_buffer = BytesIO()
             img.save(thumb_buffer, format=fmt)
@@ -81,35 +102,23 @@ def upload_media(
 
         # VIDEO
         elif mime_type.startswith("video/"):
-            temp_file_id = str(uuid.uuid4())
-            temp_dir = os.path.join(user_dir, "tmp")
-            os.makedirs(temp_dir, exist_ok=True)
-            temp_path = os.path.join(temp_dir, temp_file_id)
-
-            with open(temp_path, "wb") as f:
-                f.write(file_content)
+            # Stream encrypt video to disk to avoid RAM spike
+            with open(stored_path, "wb") as f:
+                while True:
+                    chunk = file.file.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    f.write(encryptor.update(chunk))
+                    file_size += len(chunk)
+                f.write(encryptor.finalize())
             
-            try:
-                thumb_content = generate_video_thumbnail(temp_path)
-            finally:
-                os.remove(temp_path)
-
-        # ENCRYPT
-        aesgcm = AESGCM(AES_KEY)
-        nonce = secrets.token_bytes(12)
-        ciphertext = aesgcm.encrypt(nonce, file_content, None)
-
-        file_id = str(uuid.uuid4())
-        stored_path = os.path.join(user_dir, file_id)
-
-        with open(stored_path, "wb") as f:
-            f.write(ciphertext)
+            background_tasks.add_task(generate_background_thumbnail, stored_path, mime_type, nonce)
 
         if thumb_content:
-            thumb_nonce = secrets.token_bytes(12)
-            thumb_cipher = aesgcm.encrypt(thumb_nonce, thumb_content, None)
+            thumb_nonce = secrets.token_bytes(16)
+            thumb_cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(thumb_nonce), backend=default_backend()).encryptor()
             with open(stored_path + ".thumb", "wb") as f:
-                f.write(thumb_nonce + thumb_cipher)
+                f.write(thumb_nonce + thumb_cipher.update(thumb_content) + thumb_cipher.finalize())
 
         media = Media(
             id=file_id,
@@ -117,7 +126,7 @@ def upload_media(
             content_type=mime_type,
             stored_path=stored_path,
             nonce=nonce,
-            size=len(file_content),
+            size=file_size,
             owner_id=user_id,
         )
 
@@ -134,6 +143,32 @@ def upload_media(
         })
 
     return {"uploaded": uploaded_media}
+
+def generate_background_thumbnail(stored_path: str, mime_type: str, nonce: bytes):
+    """Generates a thumbnail in the background by decrypting a small portion of the video."""
+    try:
+        temp_path = stored_path + ".tmp_dec"
+        # Decrypt first 10MB for thumbnail generation
+        cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(nonce), backend=default_backend())
+        decryptor = cipher.decryptor()
+        
+        with open(stored_path, "rb") as enc_f, open(temp_path, "wb") as dec_f:
+            chunk = enc_f.read(10 * 1024 * 1024)
+            dec_f.write(decryptor.update(chunk))
+            
+        thumb_content = generate_video_thumbnail(temp_path)
+        
+        if thumb_content:
+            thumb_nonce = secrets.token_bytes(16)
+            thumb_cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(thumb_nonce), backend=default_backend()).encryptor()
+            with open(stored_path + ".thumb", "wb") as f:
+                f.write(thumb_nonce + thumb_cipher.update(thumb_content) + thumb_cipher.finalize())
+                
+    except Exception as e:
+        print(f"Background thumbnail generation failed: {e}")
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 @router.get("/thumbnail/{media_id}")
 def get_thumbnail(
@@ -153,53 +188,22 @@ def get_thumbnail(
 
     thumb_path = media.stored_path + ".thumb"
 
+    # If thumbnail doesn't exist yet (background task pending), return placeholder or 404
     if not os.path.exists(thumb_path):
-        aesgcm = AESGCM(AES_KEY)
-
-        with open(media.stored_path, "rb") as f:
-            enc_data = f.read()
-
-        original_data = aesgcm.decrypt(media.nonce, enc_data, None)
-
-        thumb_data = None
-
-        if media.content_type.startswith("image/"):
-            img = Image.open(BytesIO(original_data))
-            img.thumbnail((300, 300))
-            buffer = BytesIO()
-            img.save(buffer, format="JPEG")
-            thumb_data = buffer.getvalue()
-
-        elif media.content_type.startswith("video/"):
-            user_dir = os.path.dirname(media.stored_path)
-            temp_dir = os.path.join(user_dir, "tmp")
-            os.makedirs(temp_dir, exist_ok=True)
-            temp_path = os.path.join(temp_dir, f"tmp_{media.id}")
-
-            try:
-                with open(temp_path, "wb") as f:
-                    f.write(original_data)
-                print("debug" + temp_path)
-                thumb_data = generate_video_thumbnail(temp_path)
-            finally:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-
-        if not thumb_data:
-            return RedirectResponse(url=f"/api/v1/media/view/{media_id}")
-
-        thumb_nonce = secrets.token_bytes(12)
-        thumb_enc = aesgcm.encrypt(thumb_nonce, thumb_data, None)
-
-        with open(thumb_path, "wb") as f:
-            f.write(thumb_nonce + thumb_enc)
+        # Fallback: Redirect to view or return 404. 
+        # For speed, we don't want to block on generation here if possible.
+        return RedirectResponse(url=f"/api/v1/media/view/{media_id}")
 
     def iter_thumb():
         with open(thumb_path, "rb") as f:
-            nonce = f.read(12)
-            enc_data = f.read()
-            aesgcm = AESGCM(AES_KEY)
-            yield aesgcm.decrypt(nonce, enc_data, None)
+            nonce = f.read(16)
+            cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(nonce), backend=default_backend())
+            decryptor = cipher.decryptor()
+            while True:
+                chunk = f.read(CHUNK_SIZE)
+                if not chunk: break
+                yield decryptor.update(chunk)
+            yield decryptor.finalize()
 
     return StreamingResponse(iter_thumb(), media_type="image/jpeg")
 
@@ -224,9 +228,8 @@ def view_media(
         raise HTTPException(403, "Forbidden request")
 
     file_path = media.stored_path
-    TAG_SIZE = 16
     total_file_size = os.path.getsize(file_path)
-    content_length = total_file_size - TAG_SIZE
+    content_length = total_file_size # No tag in CTR
 
     range_header = request.headers.get("range")
     start = 0
@@ -245,43 +248,47 @@ def view_media(
     chunk_size_to_send = (end - start) + 1
 
     def range_decrypt_streamer():
-        CHUNK_SIZE = 1024 * 1024
+        # Calculate CTR offset
+        # AES block size is 16 bytes
+        block_index = start // 16
+        offset_in_block = start % 16
         
+        # Derive counter for the specific block
+        nonce_int = int.from_bytes(media.nonce, "big")
+        current_counter = nonce_int + block_index
+        current_nonce = current_counter.to_bytes(16, "big")
+        
+        cipher = Cipher(
+            algorithms.AES(AES_KEY),
+            modes.CTR(current_nonce),
+            backend=default_backend()
+        )
+        decryptor = cipher.decryptor()
+
         with open(file_path, "rb") as f:
-            f.seek(-TAG_SIZE, 2)
-            tag = f.read(TAG_SIZE)
+            f.seek(block_index * 16)
             
-            cipher = Cipher(
-                algorithms.AES(AES_KEY),
-                modes.GCM(media.nonce, tag),
-                backend=default_backend()
-            )
-            decryptor = cipher.decryptor()
+            bytes_sent = 0
+            first_chunk = True
             
-            f.seek(0)
-            current_pos = 0
-            
-            while current_pos < content_length:
-                read_amount = min(CHUNK_SIZE, content_length - current_pos)
+            while bytes_sent < chunk_size_to_send:
+                read_amount = min(CHUNK_SIZE, chunk_size_to_send - bytes_sent + offset_in_block)
                 chunk = f.read(read_amount)
                 if not chunk: 
                     break
                 
                 decrypted_chunk = decryptor.update(chunk)
                 
-                chunk_start = current_pos
-                chunk_end = current_pos + len(decrypted_chunk) - 1
+                if first_chunk:
+                    decrypted_chunk = decrypted_chunk[offset_in_block:]
+                    first_chunk = False
                 
-                if chunk_end >= start and chunk_start <= end:
-                    slice_start = max(0, start - chunk_start)
-                    slice_end = min(len(decrypted_chunk), end - chunk_start + 1)
-                    
-                    yield decrypted_chunk[slice_start:slice_end]
-                
-                current_pos += len(chunk)
+                # Trim end if needed
+                if len(decrypted_chunk) > (chunk_size_to_send - bytes_sent):
+                    decrypted_chunk = decrypted_chunk[:chunk_size_to_send - bytes_sent]
 
-                if current_pos > end:
-                    break
+                yield decrypted_chunk
+                bytes_sent += len(decrypted_chunk)
 
     headers = {
         "Content-Range": f"bytes {start}-{end}/{content_length}",
@@ -384,40 +391,24 @@ def download_media(
     if not os.path.exists(file_path):
         raise HTTPException(404, "File missing from disk")
 
-    TAG_SIZE = 16
     file_size = os.path.getsize(file_path)
-    content_length = file_size - TAG_SIZE
+    content_length = file_size
 
     def download_streamer():
-        CHUNK_SIZE = 1024 * 1024
-        
         with open(file_path, "rb") as f:
-            f.seek(-TAG_SIZE, 2)
-            tag = f.read(TAG_SIZE)
-            
             cipher = Cipher(
                 algorithms.AES(AES_KEY),
-                modes.GCM(media.nonce, tag),
+                modes.CTR(media.nonce),
                 backend=default_backend()
             )
             decryptor = cipher.decryptor()
             
-            f.seek(0)
-            bytes_processed = 0
-            
-            while bytes_processed < content_length:
-                read_amount = min(CHUNK_SIZE, content_length - bytes_processed)
-                chunk = f.read(read_amount)
+            while True:
+                chunk = f.read(CHUNK_SIZE)
                 if not chunk: break
                 
                 yield decryptor.update(chunk)
-                bytes_processed += len(chunk)
-            
-            try:
-                decryptor.finalize()
-            except Exception:
-                print(f"Integrity error downloading {media_id}")
-                raise HTTPException(500, "Integrity error")
+            yield decryptor.finalize()
             
     headers = {
         "Content-Disposition": f'attachment; filename="{media.orig_name}"',

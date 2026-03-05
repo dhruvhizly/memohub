@@ -160,3 +160,21 @@ export const GhostIcon = () => (
     />
   </svg>
 );
+
+export const UploadingLoader = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="16" height="16" fill="none">
+    <circle cx="32" cy="32" r="26" stroke="white" strokeWidth="12" strokeOpacity="0.2"/>
+    <circle cx="32" cy="32" r="26" stroke="white" strokeWidth="12"
+      strokeLinecap="round"
+      strokeDasharray="60 104"
+      strokeDashoffset="0">
+      <animateTransform
+        attributeName="transform"
+        type="rotate"
+        from="0 32 32"
+        to="360 32 32"
+        dur="0.9s"
+        repeatCount="indefinite"/>
+    </circle>
+  </svg>
+)

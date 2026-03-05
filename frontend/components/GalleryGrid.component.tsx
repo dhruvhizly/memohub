@@ -14,7 +14,10 @@ import {
   GhostIcon,
   PlayVideoIcon,
   ScrollToTopIcon,
+  UploadingLoader,
 } from "@/lib/svg";
+import { VideoItem } from "./VideoItem.component";
+import { ImageItem } from "./ImageItem.component";
 const BREAKPOINT_MAPPING = {
   Comfort: { default: 6, 1536: 5, 1280: 4, 1024: 3, 768: 2, 500: 1 },
   Compact: { default: 8, 1536: 6, 1280: 5, 1024: 4, 768: 3, 500: 2 },
@@ -304,13 +307,18 @@ const GalleryGrid = () => {
           <div className="flex flex-wrap justify-center gap-3 items-center">
             <label
               htmlFor="upload-input"
-              className="relative px-5 py-2.5 rounded-xl font-bold overflow-hidden cursor-pointer bg-blue-600 text-white shadow-lg hover:bg-blue-500 active:scale-95 transition-all"
+              className="relative px-3 py-2.5 rounded-xl font-bold overflow-hidden cursor-pointer bg-blue-600 text-white shadow-lg hover:bg-blue-500 active:scale-95 transition-all flex gap-2.5 justify-center items-center"
             >
               {isUploading && (
                 <div
                   className="absolute inset-0 bg-blue-700 origin-left"
                   style={{ width: `${uploadProgress}%` }}
                 />
+              )}
+              {isUploading && (
+                <span className="relative z-10">
+                  <UploadingLoader />
+                </span>
               )}
               <span className="relative z-10 text-sm">
                 {isUploading ? `${uploadProgress}%` : "Upload Media"}
@@ -409,28 +417,9 @@ const GalleryGrid = () => {
 
                         {/* Media Content */}
                         {item.type.startsWith("image/") ? (
-                          <Image
-                            src={`${CONSTANTS.SERVER_URL}/media/thumbnail/${item.media_id}`}
-                            alt={item.filename}
-                            width={0}
-                            height={0}
-                            sizes={GRID_SIZES_PROP[gridCols]}
-                            className="w-full h-auto block"
-                            unoptimized
-                          />
+                          <ImageItem item={item} gridCols={GRID_SIZES_PROP[gridCols]} />
                         ) : (
-                          <div className="w-full relative">
-                            <video
-                              src={`${CONSTANTS.SERVER_URL}/media/view/${item.media_id}`}
-                              poster={`${CONSTANTS.SERVER_URL}/media/thumbnail/${item.media_id}`}
-                              className="w-full h-auto opacity-80"
-                              preload="metadata"
-                              muted
-                            />
-                            <div className="absolute inset-0 flex items-center justify-center z-20">
-                              <PlayVideoIcon />
-                            </div>
-                          </div>
+                          <VideoItem item={item}/>
                         )}
                       </div>
                     );
