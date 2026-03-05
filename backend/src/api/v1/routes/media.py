@@ -81,7 +81,18 @@ def upload_media(
 
         # VIDEO
         elif mime_type.startswith("video/"):
-            thumb_content = generate_video_thumbnail(file_content)
+            temp_file_id = str(uuid.uuid4())
+            temp_dir = os.path.join(user_dir, "tmp")
+            os.makedirs(temp_dir, exist_ok=True)
+            temp_path = os.path.join(temp_dir, temp_file_id)
+
+            with open(temp_path, "wb") as f:
+                f.write(file_content)
+            
+            try:
+                thumb_content = generate_video_thumbnail(temp_path)
+            finally:
+                os.remove(temp_path)
 
         # ENCRYPT
         aesgcm = AESGCM(AES_KEY)
@@ -160,7 +171,19 @@ def get_thumbnail(
             thumb_data = buffer.getvalue()
 
         elif media.content_type.startswith("video/"):
-            thumb_data = generate_video_thumbnail(original_data)
+            user_dir = os.path.dirname(media.stored_path)
+            temp_dir = os.path.join(user_dir, "tmp")
+            os.makedirs(temp_dir, exist_ok=True)
+            temp_path = os.path.join(temp_dir, f"tmp_{media.id}")
+
+            try:
+                with open(temp_path, "wb") as f:
+                    f.write(original_data)
+                print("debug" + temp_path)
+                thumb_data = generate_video_thumbnail(temp_path)
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
 
         if not thumb_data:
             return RedirectResponse(url=f"/api/v1/media/view/{media_id}")
@@ -468,4 +491,3 @@ def bulk_file_cleanup(paths: list[str]):
                 os.remove(path)
         except Exception as e:
             print(f"Cleanup failed for path {path}: {e}")
-

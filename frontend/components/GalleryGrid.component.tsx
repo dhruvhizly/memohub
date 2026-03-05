@@ -32,7 +32,7 @@ const SkeletonItem = ({ height }: { height: number }) => (
     style={{ height: `${height}px` }}
     className="w-full bg-neutral-900 border border-neutral-800 rounded-xl mb-4 relative overflow-hidden"
   >
-    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-neutral-700/20 to-transparent animate-shimmer" />
+    <div className="absolute inset-0 bg-linear-to-r from-transparent via-neutral-700/20 to-transparent animate-shimmer" />
   </div>
 );
 
@@ -421,7 +421,8 @@ const GalleryGrid = () => {
                         ) : (
                           <div className="w-full relative">
                             <video
-                              src={`${CONSTANTS.SERVER_URL}/media/thumbnail/${item.media_id}`}
+                              src={`${CONSTANTS.SERVER_URL}/media/view/${item.media_id}`}
+                              poster={`${CONSTANTS.SERVER_URL}/media/thumbnail/${item.media_id}`}
                               className="w-full h-auto opacity-80"
                               preload="metadata"
                               muted

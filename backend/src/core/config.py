@@ -16,3 +16,5 @@ AES_KEY = load_key("./src/encryption/server_key.bin")
 JWT_SECRET_KEY = "0350bcf3-ae87-45fc-a562-369952274813"
 JWT_ALGORITHM = "HS256"
 JWT_TOKEN_EXPIRE_MINUTES = 60
+
+FFMPEG_PATH="/usr/local/bin/ffmpeg"
