@@ -1,14 +1,12 @@
-import os, uuid, secrets, magic, re
-from PIL import Image, ImageOps
-from io import BytesIO
+import os, re, asyncio
+from concurrent.futures import ThreadPoolExecutor
 from src.db.db import get_db
 from src.models import Media
 from sqlalchemy.orm import Session
 from fastapi.responses import StreamingResponse, RedirectResponse
 from src.utils.auth_utils import require_authentication
-from src.utils.media_utils import sanitize_filename, generate_video_thumbnail
-from src.core.config import UPLOAD_DIR, MAX_UPLOAD, AES_KEY
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from src.utils.media_utils import process_single_file, generate_background_thumbnail, bulk_file_cleanup
+from src.core.config import UPLOAD_DIR, AES_KEY
 from fastapi import APIRouter, UploadFile,  Request, HTTPException, Response, Depends, Query, File, BackgroundTasks
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
@@ -16,21 +14,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 router = APIRouter(prefix="/media", tags=["media"])
 
+_executor = ThreadPoolExecutor(max_workers=4)
+
 MAX_FILE_SIZE = 1 * 1024 * 1024 * 1024  # 1GB limit
-ALLOWED_MIME_TYPES = [
-    "image/jpeg", 
-    "image/png", 
-    "image/gif", 
-    "video/mp4"
-]
-IMAGE_FORMATS = {
-    "image/jpeg": "JPEG",
-    "image/png": "PNG",
-}
-CHUNK_SIZE = 64 * 1024  # 64KB chunks for streaming
+
+CHUNK_SIZE = 64 * 1024
 
 @router.post("/upload")
-def upload_media(
+async def upload_media(
     request: Request,
     response: Response,
     background_tasks: BackgroundTasks,
@@ -46,129 +37,45 @@ def upload_media(
     user_dir = os.path.join(UPLOAD_DIR, str(user_id))
     os.makedirs(user_dir, exist_ok=True)
 
-    uploaded_media = []
+    # Process all files concurrently
+    tasks = [
+        asyncio.get_event_loop().run_in_executor(
+            _executor, process_single_file, file, user_dir, user_id, CHUNK_SIZE
+        )
+        for file in files
+    ]
 
-    for file in files:
-        # Read header for MIME detection without loading full file
-        header = file.file.read(2048)
-        mime_type = magic.from_buffer(header, mime=True)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    media_records = []
+
+    for result in results:
+        if isinstance(result, Exception):
+            raise HTTPException(status_code=400, detail=str(result))
         
-        # Reset file pointer to start, but we will handle the header in the stream
-        file.file.seek(0)
-
-        if mime_type not in ALLOWED_MIME_TYPES:
-            raise HTTPException(400, f"Invalid file content. Detected: {mime_type}")
-
-        file_id = str(uuid.uuid4())
-        stored_path = os.path.join(user_dir, file_id)
+        media_obj, _, _, stored_path, mime_type, nonce = result
+        media_records.append(media_obj)
         
-        # Use AES-CTR for seekability (Lightning fast random access)
-        # Nonce for CTR is 16 bytes (block size)
-        nonce = secrets.token_bytes(16)
-        cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(nonce), backend=default_backend())
-        encryptor = cipher.encryptor()
-        
-        file_size = 0
-        thumb_content = None
-
-        # IMAGE
-        if mime_type.startswith("image/"):
-            # Images are small enough to process in memory usually
-            file_content = file.file.read()
-            img = Image.open(BytesIO(file_content))
-            img.verify()
-            img = Image.open(BytesIO(file_content))
-
-            if mime_type in ("image/jpeg", "image/png"):
-                img = ImageOps.exif_transpose(img)
-
-            buffer = BytesIO()
-            fmt = IMAGE_FORMATS.get(mime_type, "JPEG")
-            if fmt == "JPEG":
-                img = img.convert("RGB")
-            img.save(buffer, format=fmt)
-            processed_content = buffer.getvalue()
-            file_size = len(processed_content)
-
-            # Encrypt and write image
-            with open(stored_path, "wb") as f:
-                f.write(encryptor.update(processed_content) + encryptor.finalize())
-
-            # Generate thumbnail immediately for images
-            img.thumbnail((300, 300))
-            thumb_buffer = BytesIO()
-            img.save(thumb_buffer, format=fmt)
-            thumb_content = thumb_buffer.getvalue()
-
-        # VIDEO
-        elif mime_type.startswith("video/"):
-            # Stream encrypt video to disk to avoid RAM spike
-            with open(stored_path, "wb") as f:
-                while True:
-                    chunk = file.file.read(CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    f.write(encryptor.update(chunk))
-                    file_size += len(chunk)
-                f.write(encryptor.finalize())
-            
+        if mime_type.startswith("video/"):
             background_tasks.add_task(generate_background_thumbnail, stored_path, mime_type, nonce)
 
-        if thumb_content:
-            thumb_nonce = secrets.token_bytes(16)
-            thumb_cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(thumb_nonce), backend=default_backend()).encryptor()
-            with open(stored_path + ".thumb", "wb") as f:
-                f.write(thumb_nonce + thumb_cipher.update(thumb_content) + thumb_cipher.finalize())
-
-        media = Media(
-            id=file_id,
-            orig_name=sanitize_filename(file.filename),
-            content_type=mime_type,
-            stored_path=stored_path,
-            nonce=nonce,
-            size=file_size,
-            owner_id=user_id,
-        )
-
-        db.add(media)
-        db.commit()
-        db.refresh(media)
-
+    # Single batch commit for all files
+    db.add_all(media_records)
+    db.commit()
+    
+    uploaded_media = []
+    for m in media_records:
+        db.refresh(m)
         uploaded_media.append({
-            "media_id": media.id,
-            "filename": media.orig_name,
-            "type": media.content_type,
-            "size": media.size,
-            "uploaded_at": media.uploaded_at,
+            "media_id": m.id,
+            "filename": m.orig_name,
+            "type": m.content_type,
+            "size": m.size,
+            "uploaded_at": m.uploaded_at,
         })
 
     return {"uploaded": uploaded_media}
 
-def generate_background_thumbnail(stored_path: str, mime_type: str, nonce: bytes):
-    """Generates a thumbnail in the background by decrypting a small portion of the video."""
-    try:
-        temp_path = stored_path + ".tmp_dec"
-        # Decrypt first 10MB for thumbnail generation
-        cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(nonce), backend=default_backend())
-        decryptor = cipher.decryptor()
-        
-        with open(stored_path, "rb") as enc_f, open(temp_path, "wb") as dec_f:
-            chunk = enc_f.read(10 * 1024 * 1024)
-            dec_f.write(decryptor.update(chunk))
-            
-        thumb_content = generate_video_thumbnail(temp_path)
-        
-        if thumb_content:
-            thumb_nonce = secrets.token_bytes(16)
-            thumb_cipher = Cipher(algorithms.AES(AES_KEY), modes.CTR(thumb_nonce), backend=default_backend()).encryptor()
-            with open(stored_path + ".thumb", "wb") as f:
-                f.write(thumb_nonce + thumb_cipher.update(thumb_content) + thumb_cipher.finalize())
-                
-    except Exception as e:
-        print(f"Background thumbnail generation failed: {e}")
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
 
 @router.get("/thumbnail/{media_id}")
 def get_thumbnail(
@@ -205,7 +112,9 @@ def get_thumbnail(
                 yield decryptor.update(chunk)
             yield decryptor.finalize()
 
-    return StreamingResponse(iter_thumb(), media_type="image/jpeg")
+    resp = StreamingResponse(iter_thumb(), media_type="image/jpeg")
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
 
 
 @router.get("/view/{media_id}")
@@ -224,11 +133,11 @@ def view_media(
     media = db.query(Media).filter(Media.id == media_id).first()
     if not media: 
         raise HTTPException(404, "Media not found")
-    if media.owner.id != user_id: 
+    if media.owner_id != user_id: 
         raise HTTPException(403, "Forbidden request")
 
     file_path = media.stored_path
-    total_file_size = os.path.getsize(file_path)
+    total_file_size = media.size
     content_length = total_file_size # No tag in CTR
 
     range_header = request.headers.get("range")
@@ -303,6 +212,7 @@ def view_media(
         media_type=media.content_type,
         headers=headers
     )
+    strm_resp.headers["Cache-Control"] = "private, max-age=3600"
 
     # Copy cookies to StreamingResponse header incase of a refresh of access_token
     cookies = response.headers.getlist("set-cookie")
@@ -391,8 +301,7 @@ def download_media(
     if not os.path.exists(file_path):
         raise HTTPException(404, "File missing from disk")
 
-    file_size = os.path.getsize(file_path)
-    content_length = file_size
+    content_length = media.size
 
     def download_streamer():
         with open(file_path, "rb") as f:
@@ -443,24 +352,23 @@ def delete_media(
     if not user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    media_list = (
-        db.query(Media)
+    media_records = (
+        db.query(Media.id, Media.stored_path)
         .filter(Media.id.in_(media_ids), Media.owner_id == user_id)
         .all()
     )
 
-    if not media_list:
+    if not media_records:
         return {"detail": "No items found to delete", "deleted": []}
 
     # Extract paths and IDs before deleting from DB
-    file_paths = [m.stored_path for m in media_list]
-    deleted_ids = [m.id for m in media_list]
+    file_paths = [m.stored_path for m in media_records]
+    deleted_ids = [m.id for m in media_records]
     file_paths.extend([p + ".thumb" for p in file_paths])
 
     try:
         # 2. Database transaction (Atomic)
-        for media in media_list:
-            db.delete(media)
+        db.query(Media).filter(Media.id.in_(deleted_ids)).delete(synchronize_session=False)
         db.commit()
         
         # 3. Queue the slow disk I/O for later
@@ -474,11 +382,4 @@ def delete_media(
     return {"status": "success", "deleted": deleted_ids}
 
 
-def bulk_file_cleanup(paths: list[str]):
-    """Background worker to clean up files without blocking the API."""
-    for path in paths:
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-        except Exception as e:
-            print(f"Cleanup failed for path {path}: {e}")
+
