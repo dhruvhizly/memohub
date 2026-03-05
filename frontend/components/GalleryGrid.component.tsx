@@ -1,18 +1,15 @@
 "use client";
-
 import axios from "axios";
-import Image from "next/image";
 import ViewMediaModal from "@/components/ViewMediaModal.component";
 import { CONSTANTS } from "@/lib/constants";
 import { useUserId } from "@/lib/store";
 import { MediaResponse, MediaItem } from "@/interfaces/media_response";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import Masonry from "react-masonry-css"; // Import the library
+import Masonry from "react-masonry-css";
 import {
   CheckBoxTickIcon,
   CloseIcon,
   GhostIcon,
-  PlayVideoIcon,
   ScrollToTopIcon,
   UploadingLoader,
 } from "@/lib/svg";
@@ -77,6 +74,7 @@ const GalleryGrid = () => {
   const [gridCols, setGridCols] = useState<"Comfort" | "Compact" | "Dense">(
     "Compact",
   );
+  
   const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(
     null,
   );
