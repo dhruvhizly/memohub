@@ -15,6 +15,9 @@ import {
 } from "@/lib/svg";
 import { VideoItem } from "./VideoItem.component";
 import { ImageItem } from "./ImageItem.component";
+
+type GridMode = "Comfort" | "Compact" | "Dense";
+
 const BREAKPOINT_MAPPING = {
   Comfort: { default: 6, 1536: 5, 1280: 4, 1024: 3, 768: 2, 500: 1 },
   Compact: { default: 8, 1536: 6, 1280: 5, 1024: 4, 768: 3, 500: 2 },
@@ -64,44 +67,86 @@ const GalleryGrid = () => {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const isSelectionMode = selectedIds.size > 0;
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const observerTarget = useRef<HTMLDivElement>(null);
-
-  const [gridCols, setGridCols] = useState<"Comfort" | "Compact" | "Dense">(
-    "Compact",
-  );
-  
-  const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(
-    null,
-  );
+  const [gridCols, setGridCols] = useState<GridMode>("Compact");
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
-
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const isSelectionMode = selectedIds.size > 0;
+  const observerTarget = useRef<HTMLDivElement>(null);
   const setUserId = useUserId((s) => s.setUserId);
-  const PAGE_SIZE = 24;
-
-  useEffect(() => {
-    const handleScroll = () => setShowScrollTop(window.scrollY > 400);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
+  
+  const PAGE_SIZE = 10;
+  
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
-  const groupedMedia = useMemo(() => {
-    // 1. Explicitly sort items by date (Newest to Oldest)
-    // We create a copy [...mediaItems] to avoid mutating the state directly
-    const sortedItems = [...mediaItems].sort(
-      (a, b) =>
-        new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime(),
-    );
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
+  const handleDeleteSelected = async () => {
+    const count = selectedIds.size;
+    if (!confirm(`Are you sure you want to delete ${count} items?`)) return;
+
+    try {
+      const endpoint = `${CONSTANTS.SERVER_URL}/media/delete`;
+      const res = await axios.delete(endpoint, {
+        data: Array.from(selectedIds),
+        withCredentials: true,
+      });
+
+      if (res.data.status === "success") {
+        const deletedIdsFromServer = new Set(res.data.deleted);
+        setMediaItems((prev) =>
+          prev.filter((item) => !deletedIdsFromServer.has(item.media_id)),
+        );
+        setSelectedIds(new Set());
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Deletion failed");
+    }
+  };
+
+  const openModal = (id: string) => {
+    const index = mediaItems.findIndex((m) => m.media_id === id);
+    setSelectedMediaIndex(index);
+  };
+
+  const handleUpload = async (files: File[]) => {
+    if (!files.length) return;
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
+      await axios.post(`${CONSTANTS.SERVER_URL}/media/upload`, formData, {
+        withCredentials: true,
+        onUploadProgress: (p) =>
+          p.total && setUploadProgress(Math.round((p.loaded * 100) / p.total)),
+      });
+      setTimeout(() => {
+        setIsUploading(false);
+        fetchMedia(1, true);
+      }, 500);
+    } catch (err: any) {
+      alert("Upload failed");
+      setIsUploading(false);
+    }
+  };
+
+  const groupedMedia = useMemo(() => {
+    // We create a copy [...mediaItems] to avoid mutating the state directly
+    const items = [...mediaItems]
     const groups: Record<string, MediaItem[]> = {};
 
-    sortedItems.forEach((item) => {
+    items.forEach((item) => {
       const date = new Date(item.uploaded_at);
       const now = new Date();
       let label = "";
@@ -165,84 +210,28 @@ const GalleryGrid = () => {
   }, []);
 
   useEffect(() => {
+    const handleScroll = () => setShowScrollTop(window.scrollY > 400);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !isLoading) {
           fetchMedia(page + 1);
         }
       },
-      { threshold: 0.1, rootMargin: "200px" },
+      { threshold: 0.1, rootMargin: "1000px" },
     );
     if (observerTarget.current) observer.observe(observerTarget.current);
     return () => observer.disconnect();
   }, [hasMore, isLoading, page, fetchMedia]);
 
-  const toggleSelection = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const handleDeleteSelected = async () => {
-    const count = selectedIds.size;
-    if (!confirm(`Are you sure you want to delete ${count} items?`)) return;
-
-    try {
-      const endpoint = `${CONSTANTS.SERVER_URL}/media/delete`;
-      const res = await axios.delete(endpoint, {
-        data: Array.from(selectedIds),
-        withCredentials: true,
-      });
-
-      if (res.data.status === "success") {
-        const deletedIdsFromServer = new Set(res.data.deleted);
-        setMediaItems((prev) =>
-          prev.filter((item) => !deletedIdsFromServer.has(item.media_id)),
-        );
-        setSelectedIds(new Set());
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.detail || "Deletion failed");
-    }
-  };
-
-  const openModal = (id: string) => {
-    const index = mediaItems.findIndex((m) => m.media_id === id);
-    setSelectedMediaIndex(index);
-  };
-
   useEffect(() => {
-    document.body.style.overflow =
-      selectedMediaIndex !== null ? "hidden" : "auto";
-    return () => {
-      document.body.style.overflow = "auto";
-    };
+    document.body.style.overflow = selectedMediaIndex !== null ? "hidden" : "auto";
+    return () => {document.body.style.overflow = "auto"};
   }, [selectedMediaIndex]);
-
-  const handleUpload = async (files: File[]) => {
-    if (!files.length) return;
-    setIsUploading(true);
-    setUploadProgress(0);
-    try {
-      const formData = new FormData();
-      files.forEach((file) => formData.append("files", file));
-      await axios.post(`${CONSTANTS.SERVER_URL}/media/upload`, formData, {
-        withCredentials: true,
-        onUploadProgress: (p) =>
-          p.total && setUploadProgress(Math.round((p.loaded * 100) / p.total)),
-      });
-      setTimeout(() => {
-        setIsUploading(false);
-        fetchMedia(1, true);
-      }, 500);
-    } catch (err: any) {
-      alert("Upload failed");
-      setIsUploading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center bg-neutral-950 text-neutral-200 relative">
@@ -433,13 +422,13 @@ const GalleryGrid = () => {
           ref={observerTarget}
           className="h-20 w-full flex items-center justify-center mt-10"
         >
-          {isLoading && mediaItems.length > 0 && (
+          {isLoading && (
             <div className="w-6 h-6 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
           )}
         </div>
       </main>
 
-      {/* --- CONTROLS --- */}
+      {/* --- VIEW CONTROLS --- */}
       {groupedMedia.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex bg-neutral-900/80 backdrop-blur-md border border-neutral-700 p-1.5 rounded-full shadow-2xl">
           {["Comfort", "Compact", "Dense"].map((size) => (
@@ -458,6 +447,7 @@ const GalleryGrid = () => {
         </div>
       )}
 
+      {/* SCROLL TO TOP BUTTON */}
       <button
         onClick={scrollToTop}
         className={`fixed bottom-6 right-6 p-4 bg-gray-800 hover:bg-blue-500 text-white rounded-full shadow-2xl transition-all duration-300 z-50 cursor-pointer ${showScrollTop ? "translate-y-0 opacity-100" : "translate-y-20 opacity-0"}`}
@@ -465,6 +455,7 @@ const GalleryGrid = () => {
         <ScrollToTopIcon />
       </button>
 
+      {/* --- MEDIA VIEW MODAL --- */}
       <ViewMediaModal
         mediaItems={mediaItems}
         selectedMediaIndex={selectedMediaIndex}

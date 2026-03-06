@@ -40,6 +40,7 @@ const ViewMediaModal = ({
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [direction, setDirection] = useState<"left" | "right" | null>(null);
 
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -70,18 +71,20 @@ const ViewMediaModal = ({
   };
 
   const handleNext = useCallback(() => {
+    setDirection("right");
     if (selectedMediaIndex === null) return;
     setSelectedMediaIndex((prev) =>
       prev !== null && prev < mediaItems.length - 1 ? prev + 1 : 0,
     );
-  }, [mediaItems.length, selectedMediaIndex]);
+  }, [mediaItems.length, selectedMediaIndex, setSelectedMediaIndex]);
 
   const handlePrev = useCallback(() => {
+    setDirection("left");
     if (selectedMediaIndex === null) return;
     setSelectedMediaIndex((prev) =>
       prev !== null && prev > 0 ? prev - 1 : mediaItems.length - 1,
     );
-  }, [mediaItems.length, selectedMediaIndex]);
+  }, [mediaItems.length, selectedMediaIndex, setSelectedMediaIndex]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -101,7 +104,7 @@ const ViewMediaModal = ({
   return (
     selectedMedia && (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md animate-modal-enter"
         onClick={() => setSelectedMediaIndex(null)}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -185,24 +188,35 @@ const ViewMediaModal = ({
               showInfo ? "md:pr-80 blur-sm opacity-50 scale-95" : ""
             }`}
           >
-            {selectedMedia.type.startsWith("image/") ? (
-              <div className="relative w-full h-full max-h-[85vh]">
-                <img
-                  alt={selectedMedia.filename}
+            <div
+              key={selectedMedia.media_id}
+              className={`w-full h-full flex items-center justify-center ${
+                direction === "right"
+                  ? "animate-slide-right"
+                  : direction === "left"
+                  ? "animate-slide-left"
+                  : ""
+              }`}
+            >
+              {selectedMedia.type.startsWith("image/") ? (
+                <div className="relative w-full h-full max-h-[85vh]">
+                  <img
+                    alt={selectedMedia.filename}
+                    src={`${CONSTANTS.SERVER_URL}/media/view/${selectedMedia.media_id}`}
+                    className="object-contain shadow-2xl w-full max-h-[80vh]"
+                    draggable={false}
+                  />
+                </div>
+              ) : (
+                <video
                   src={`${CONSTANTS.SERVER_URL}/media/view/${selectedMedia.media_id}`}
-                  className="object-contain shadow-2xl w-full max-h-[80vh]"
-                  draggable={false}
+                  className="max-w-full max-h-[85vh] shadow-2xl"
+                  controls
+                  autoPlay
+                  playsInline
                 />
-              </div>
-            ) : (
-              <video
-                src={`${CONSTANTS.SERVER_URL}/media/view/${selectedMedia.media_id}`}
-                className="max-w-full max-h-[85vh] shadow-2xl"
-                controls
-                autoPlay
-                playsInline
-              />
-            )}
+              )}
+            </div>
           </div>
           <button
             onClick={handleNext}
@@ -211,6 +225,29 @@ const ViewMediaModal = ({
             <ChevronRight />
           </button>
         </div>
+        <style jsx>{`
+          @keyframes modalEnter {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+          }
+          @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(40px); }
+            to { opacity: 1; transform: translateX(0); }
+          }
+          @keyframes slideInLeft {
+            from { opacity: 0; transform: translateX(-40px); }
+            to { opacity: 1; transform: translateX(0); }
+          }
+          .animate-modal-enter {
+            animation: modalEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          }
+          .animate-slide-right {
+            animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          }
+          .animate-slide-left {
+            animation: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          }
+        `}</style>
       </div>
     )
   );
