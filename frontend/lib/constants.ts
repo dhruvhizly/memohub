@@ -1,3 +1,3 @@
 export enum CONSTANTS {
-  SERVER_URL = "https://bands-trigger-jets-salvador.trycloudflare.com",
+  SERVER_URL = "https://hope-modules-duties-better.trycloudflare.com",
 }
