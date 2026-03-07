@@ -1,4 +1,5 @@
 import os, re, asyncio
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from src.db.db import get_db
 from src.models import Media
@@ -261,19 +262,40 @@ def list_media(
         print(f"Database error listing media: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+    groups = {}
+    now = datetime.now()
+
+    for m in medias:
+        diff = (now.date() - m.uploaded_at.date()).days
+
+        if diff == 0:
+            label = "Today"
+        elif diff == 1:
+            label = "Yesterday"
+        elif 0 < diff < 7:
+            label = "This Week"
+        else:
+            label = m.uploaded_at.strftime("%B %Y")
+
+        if label not in groups:
+            groups[label] = []
+
+        groups[label].append({
+            "media_id": m.id,
+            "filename": m.orig_name,
+            "type": m.content_type,
+            "uploaded_at": m.uploaded_at,
+            "size": m.size
+        })
+
+    for items in groups.values():
+        items.sort(key=lambda x: x["uploaded_at"], reverse=True)
+
     return {
         "total": total,
         "page": page,
         "page_size": page_size,
-        "medias": [
-            {
-                "media_id": m.id,
-                "filename": m.orig_name,
-                "type": m.content_type,
-                "uploaded_at": m.uploaded_at,
-                "size": m.size
-            } for m in medias
-        ]
+        "groups": [{"label": k, "items": v} for k, v in groups.items()]
     }
 
 
@@ -380,6 +402,3 @@ def delete_media(
         raise HTTPException(status_code=500, detail="Database error occurred")
 
     return {"status": "success", "deleted": deleted_ids}
-
-
-

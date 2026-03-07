@@ -3,7 +3,7 @@ import axios from "axios";
 import ViewMediaModal from "@/components/ViewMediaModal.component";
 import { CONSTANTS } from "@/lib/constants";
 import { useUserId } from "@/lib/store";
-import { MediaResponse, MediaItem } from "@/interfaces/media_response";
+import { GroupedMediaItem, GroupedMediaResponse } from "@/interfaces/media_response";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Masonry from "react-masonry-css";
 import {
@@ -64,7 +64,7 @@ const GallerySkeleton = ({
 
 // --- MAIN COMPONENT ---
 const GalleryGrid = () => {
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [groupedMediaItems, setGroupedMediaItems] = useState<Array<GroupedMediaItem>>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [page, setPage] = useState(1);
@@ -77,7 +77,11 @@ const GalleryGrid = () => {
   const isSelectionMode = selectedIds.size > 0;
   const observerTarget = useRef<HTMLDivElement>(null);
   const setUserId = useUserId((s) => s.setUserId);
-  
+  const flatMediaItems = useMemo(
+    () => groupedMediaItems.flatMap(({label, items}) => items),
+    [groupedMediaItems],
+  );
+
   const PAGE_SIZE = 10;
   
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
@@ -104,8 +108,13 @@ const GalleryGrid = () => {
 
       if (res.data.status === "success") {
         const deletedIdsFromServer = new Set(res.data.deleted);
-        setMediaItems((prev) =>
-          prev.filter((item) => !deletedIdsFromServer.has(item.media_id)),
+        setGroupedMediaItems((prev) =>
+          prev
+            .map(({label, items}) => ({
+              label,
+              items: items.filter((item) => !deletedIdsFromServer.has(item.media_id)),
+            }))
+            .filter((({items}) => items.length > 0)),
         );
         setSelectedIds(new Set());
       }
@@ -115,7 +124,7 @@ const GalleryGrid = () => {
   };
 
   const openModal = (id: string) => {
-    const index = mediaItems.findIndex((m) => m.media_id === id);
+    const index = flatMediaItems.findIndex((m) => m.media_id === id);
     setSelectedMediaIndex(index);
   };
 
@@ -141,60 +150,37 @@ const GalleryGrid = () => {
     }
   };
 
-  const groupedMedia = useMemo(() => {
-    // We create a copy [...mediaItems] to avoid mutating the state directly
-    const items = [...mediaItems]
-    const groups: Record<string, MediaItem[]> = {};
-
-    items.forEach((item) => {
-      const date = new Date(item.uploaded_at);
-      const now = new Date();
-      let label = "";
-
-      // Calculate difference in days (ignoring time for the day calculation)
-      const diffTime =
-        now.setHours(0, 0, 0, 0) - new Date(date).setHours(0, 0, 0, 0);
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays === 0) label = "Today";
-      else if (diffDays === 1) label = "Yesterday";
-      else if (diffDays < 7 && diffDays > 0) label = "This Week";
-      else
-        label = date.toLocaleDateString("en-US", {
-          month: "long",
-          year: "numeric",
-        });
-
-      if (!groups[label]) groups[label] = [];
-      groups[label].push(item);
-    });
-
-    for (const [label, mediaList] of Object.entries(groups)) {
-      groups[label] = mediaList.sort((m1, m2) => new Date(m2.uploaded_at).getTime() - new Date(m1.uploaded_at).getTime());
-    }
-
-    return Object.entries(groups);
-  }, [mediaItems]);
-
   const fetchMedia = useCallback(
     async (pageNum: number, resetList = false) => {
-      if (isLoading && !resetList && mediaItems.length > 0) return;
+      if (isLoading && !resetList && groupedMediaItems.length > 0) return;
       setIsLoading(true);
       try {
         const endpoint = new URL("/media/", CONSTANTS.SERVER_URL);
         endpoint.searchParams.append("page", pageNum.toString());
         endpoint.searchParams.append("page_size", PAGE_SIZE.toString());
 
-        const res = await axios.get<MediaResponse>(endpoint.toString(), {
+        const res = await axios.get<GroupedMediaResponse>(endpoint.toString(), {
           withCredentials: true,
         });
-        const { medias, total } = res.data;
+        const { groups, total } = res.data;
 
-        setMediaItems((prev) => (resetList ? medias : [...prev, ...medias]));
-        const totalLoaded = resetList
-          ? medias.length
-          : mediaItems.length + medias.length;
-        setHasMore(totalLoaded < total);
+        setGroupedMediaItems((prev) => {
+          if (resetList) return groups;
+
+          const lastGroup = prev[prev.length - 1];
+          const firstNewGroup = groups[0];
+
+          if (lastGroup && firstNewGroup && lastGroup.label === firstNewGroup.label) {
+            const mergedGroup: GroupedMediaItem = {
+              label: lastGroup.label,
+              items: [...lastGroup.items, ...firstNewGroup.items],
+            };
+            return [...prev.slice(0, -1), mergedGroup, ...groups.slice(1)];
+          }
+          return [...prev, ...groups];
+        });
+
+        setHasMore(pageNum * PAGE_SIZE < total);
         setPage(pageNum);
       } catch (err) {
         console.error("Failed to fetch media:", err);
@@ -202,7 +188,7 @@ const GalleryGrid = () => {
         setIsLoading(false);
       }
     },
-    [isLoading, mediaItems.length],
+    [isLoading, groupedMediaItems.length],
   );
 
   useEffect(() => {
@@ -335,12 +321,12 @@ const GalleryGrid = () => {
       <main className="w-full h-full px-4 pt-8 pb-32">
         <div className="w-full space-y-12">
           {/* 1. LOADING STATE */}
-          {isLoading && mediaItems.length === 0 ? (
+          {isLoading && groupedMediaItems.length === 0 ? (
             <section className="space-y-4">
               <div className="h-6 w-32 bg-neutral-900 rounded-md animate-pulse mb-6 border-l-4 border-neutral-800" />
               <GallerySkeleton mode={gridCols} />
             </section>
-          ) : groupedMedia.length === 0 ? (
+          ) : groupedMediaItems.length === 0 ? (
             /* 2. EMPTY STATE */
             <div className="flex flex-col items-center justify-center text-center animate-in fade-in duration-500">
               <div className="mb-6 opacity-80">
@@ -355,10 +341,10 @@ const GalleryGrid = () => {
             </div>
           ) : (
             /* 3. MASONRY GRID STATE */
-            groupedMedia.map(([dateLabel, items]) => (
-              <section key={dateLabel} className="space-y-4">
+            groupedMediaItems.map(({label, items}) => (
+              <section key={label} className="space-y-4">
                 <h2 className="text-md font-bold text-neutral-400 py-1 border-l-4 border-blue-600 pl-3">
-                  {dateLabel}
+                  {label}
                 </h2>
 
                 {/* --- MASONRY COMPONENT IMPLEMENTATION --- */}
@@ -429,7 +415,7 @@ const GalleryGrid = () => {
       </main>
 
       {/* --- VIEW CONTROLS --- */}
-      {groupedMedia.length > 0 && (
+      {groupedMediaItems.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex bg-neutral-900/80 backdrop-blur-md border border-neutral-700 p-1.5 rounded-full shadow-2xl">
           {["Comfort", "Compact", "Dense"].map((size) => (
             <button
@@ -457,7 +443,7 @@ const GalleryGrid = () => {
 
       {/* --- MEDIA VIEW MODAL --- */}
       <ViewMediaModal
-        mediaItems={mediaItems}
+        mediaItems={flatMediaItems}
         selectedMediaIndex={selectedMediaIndex}
         onChangeSelectedMediaIndex={setSelectedMediaIndex}
       />
