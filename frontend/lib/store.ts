@@ -1,4 +1,4 @@
-import { Userid } from "@/interfaces/zustand_state_types";
+import { Userid } from "@/interfaces/zustand_states";
 import { create } from "zustand";
 
 const useUserId = create<Userid>((set) => ({

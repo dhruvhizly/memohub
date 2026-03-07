@@ -3,7 +3,11 @@ import axios from "axios";
 import ViewMediaModal from "@/components/ViewMediaModal.component";
 import { CONSTANTS } from "@/lib/constants";
 import { useUserId } from "@/lib/store";
-import { GroupedMediaItem, GroupedMediaResponse } from "@/interfaces/media_response";
+import {
+  GroupedMediaItem,
+  GroupedMediaResponse,
+  MediaItem,
+} from "@/interfaces/media_response";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Masonry from "react-masonry-css";
 import {
@@ -15,6 +19,8 @@ import {
 } from "@/lib/svg";
 import { VideoItem } from "./VideoItem.component";
 import { ImageItem } from "./ImageItem.component";
+import { ConfirmationModal } from "./ConfirmationModal.component";
+import { ConfirmationModalState } from "@/interfaces/common_interfaces";
 
 type GridMode = "Comfort" | "Compact" | "Dense";
 
@@ -53,7 +59,7 @@ const GallerySkeleton = ({
       {Array.from({ length: colCount }).map((_, colIndex) => (
         <div key={colIndex} className="flex flex-col gap-4 w-full">
           {Array.from({ length: itemsPerCol }).map((_, itemIndex) => {
-            const height = 180 + (itemIndex * 80);
+            const height = 180 + itemIndex * 80;
             return <SkeletonItem key={itemIndex} height={height} />;
           })}
         </div>
@@ -64,26 +70,38 @@ const GallerySkeleton = ({
 
 // --- MAIN COMPONENT ---
 const GalleryGrid = () => {
-  const [groupedMediaItems, setGroupedMediaItems] = useState<Array<GroupedMediaItem>>([]);
+  const [groupedMediaItems, setGroupedMediaItems] = useState<
+    Array<GroupedMediaItem>
+  >([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [gridCols, setGridCols] = useState<GridMode>("Compact");
-  const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(null);
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(
+    null,
+  );
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedIds.size > 0;
   const observerTarget = useRef<HTMLDivElement>(null);
   const setUserId = useUserId((s) => s.setUserId);
   const flatMediaItems = useMemo(
-    () => groupedMediaItems.flatMap(({label, items}) => items),
+    () => groupedMediaItems.flatMap(({ label, items }) => items),
     [groupedMediaItems],
   );
+  const [confirmationModalState, setConfirmationModalState] =
+    useState<ConfirmationModalState>({
+      title: "",
+      confirmText: "",
+      cancelText: "",
+      onConfirm: () => {},
+      onCancel: () => {},
+    });
 
   const PAGE_SIZE = 10;
-  
+
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   const toggleSelection = (id: string) => {
@@ -95,38 +113,72 @@ const GalleryGrid = () => {
     });
   };
 
-  const handleDeleteSelected = async () => {
-    const count = selectedIds.size;
-    if (!confirm(`Are you sure you want to delete ${count} items?`)) return;
+  const toggleGroupSelection = (items: MediaItem[]) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = items.every((item) => next.has(item.media_id));
 
-    try {
-      const endpoint = `${CONSTANTS.SERVER_URL}/media/delete`;
-      const res = await axios.delete(endpoint, {
-        data: Array.from(selectedIds),
-        withCredentials: true,
-      });
-
-      if (res.data.status === "success") {
-        const deletedIdsFromServer = new Set(res.data.deleted);
-        setGroupedMediaItems((prev) =>
-          prev
-            .map(({label, items}) => ({
-              label,
-              items: items.filter((item) => !deletedIdsFromServer.has(item.media_id)),
-            }))
-            .filter((({items}) => items.length > 0)),
-        );
-        setSelectedIds(new Set());
+      if (allSelected) {
+        items.forEach((item) => next.delete(item.media_id));
+      } else {
+        items.forEach((item) => next.add(item.media_id));
       }
-    } catch (err: any) {
-      alert(err.response?.data?.detail || "Deletion failed");
-    }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = () => {
+    const deleteItems = async () => {
+      closeConfirmationModal();
+      try {
+        const endpoint = `${CONSTANTS.SERVER_URL}/media/delete`;
+        const res = await axios.delete(endpoint, {
+          data: Array.from(selectedIds),
+          withCredentials: true,
+        });
+
+        if (res.data.status === "success") {
+          const deletedIdsFromServer = new Set(res.data.deleted);
+          setGroupedMediaItems((prev) =>
+            prev
+              .map(({ label, items }) => ({
+                label,
+                items: items.filter(
+                  (item) => !deletedIdsFromServer.has(item.media_id),
+                ),
+              }))
+              .filter(({ items }) => items.length > 0),
+          );
+          setSelectedIds(new Set());
+        }
+      } catch (err: any) {
+        alert(err.response?.data?.detail || "Deletion failed");
+      }
+    };
+
+    const count = selectedIds.size;
+    setConfirmationModalState({
+      title: `Are you sure you want to delete ${count} items?`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      onConfirm: deleteItems,
+      onCancel: closeConfirmationModal,
+    });
   };
 
   const openModal = (id: string) => {
     const index = flatMediaItems.findIndex((m) => m.media_id === id);
     setSelectedMediaIndex(index);
   };
+
+  const closeConfirmationModal = () =>
+    setConfirmationModalState({
+      title: "",
+      confirmText: "",
+      cancelText: "",
+      onConfirm: () => {},
+      onCancel: () => {},
+    });
 
   const handleUpload = async (files: File[]) => {
     if (!files.length) return;
@@ -170,7 +222,11 @@ const GalleryGrid = () => {
           const lastGroup = prev[prev.length - 1];
           const firstNewGroup = groups[0];
 
-          if (lastGroup && firstNewGroup && lastGroup.label === firstNewGroup.label) {
+          if (
+            lastGroup &&
+            firstNewGroup &&
+            lastGroup.label === firstNewGroup.label
+          ) {
             const mergedGroup: GroupedMediaItem = {
               label: lastGroup.label,
               items: [...lastGroup.items, ...firstNewGroup.items],
@@ -215,8 +271,11 @@ const GalleryGrid = () => {
   }, [hasMore, isLoading, page, fetchMedia]);
 
   useEffect(() => {
-    document.body.style.overflow = selectedMediaIndex !== null ? "hidden" : "auto";
-    return () => {document.body.style.overflow = "auto"};
+    document.body.style.overflow =
+      selectedMediaIndex !== null ? "hidden" : "auto";
+    return () => {
+      document.body.style.overflow = "auto";
+    };
   }, [selectedMediaIndex]);
 
   return (
@@ -244,6 +303,9 @@ const GalleryGrid = () => {
           background-clip: padding-box;
         }
       `}</style>
+
+      {/* --- CONFIRMATION MODAL --- */}
+      <ConfirmationModal state={confirmationModalState} />
 
       {/* --- SELECTION OVERLAY --- */}
       {isSelectionMode && (
@@ -341,65 +403,91 @@ const GalleryGrid = () => {
             </div>
           ) : (
             /* 3. MASONRY GRID STATE */
-            groupedMediaItems.map(({label, items}) => (
-              <section key={label} className="space-y-4">
-                <h2 className="text-md font-bold text-neutral-400 py-1 border-l-4 border-blue-600 pl-3">
-                  {label}
-                </h2>
+            groupedMediaItems.map(({ label, items }) => {
+              const allSelected = items.every((i) => selectedIds.has(i.media_id));
+              const someSelected = items.some((i) => selectedIds.has(i.media_id));
+              const isIndeterminate = someSelected && !allSelected;
 
-                {/* --- MASONRY COMPONENT IMPLEMENTATION --- */}
-                <Masonry
-                  breakpointCols={BREAKPOINT_MAPPING[gridCols]}
-                  className="my-masonry-grid"
-                  columnClassName="my-masonry-grid_column"
-                >
-                  {items.map((item) => {
-                    const isItemSelected = selectedIds.has(item.media_id);
-                    return (
-                      <div
-                        key={item.media_id}
-                        onClick={() =>
-                          isSelectionMode
-                            ? toggleSelection(item.media_id)
-                            : openModal(item.media_id)
-                        }
-                        className={`relative w-full overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group mb-4 ${
-                          isItemSelected
-                            ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]"
-                            : "border-neutral-800 hover:border-neutral-600"
+              return (
+                <section key={label} className="space-y-4">
+                  <div className="flex items-center gap-3 py-1 border-l-4 border-blue-600 pl-3">
+                    {isSelectionMode && (
+                      <button
+                        onClick={() => toggleGroupSelection(items)}
+                        className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                          allSelected || isIndeterminate
+                            ? "bg-blue-600 border-blue-600"
+                            : "border-neutral-600 hover:border-neutral-400"
                         }`}
                       >
-                        {/* Checkbox Overlay */}
-                        <div
-                          className={`absolute top-2 left-2 z-30 transition-opacity ${
-                            isItemSelected
-                              ? "opacity-100"
-                              : "opacity-0 group-hover:opacity-100"
-                          }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleSelection(item.media_id);
-                          }}
-                        >
-                          <div
-                            className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isItemSelected ? "bg-blue-500 border-blue-500" : "bg-black/40 border-white/50 backdrop-blur-md"}`}
-                          >
-                            {isItemSelected && <CheckBoxTickIcon />}
-                          </div>
-                        </div>
-
-                        {/* Media Content */}
-                        {item.type.startsWith("image/") ? (
-                          <ImageItem item={item} gridCols={GRID_SIZES_PROP[gridCols]} />
-                        ) : (
-                          <VideoItem item={item}/>
+                        {allSelected && <CheckBoxTickIcon />}
+                        {isIndeterminate && (
+                          <div className="w-3 h-0.5 bg-white rounded-full" />
                         )}
-                      </div>
-                    );
-                  })}
-                </Masonry>
-              </section>
-            ))
+                      </button>
+                    )}
+                    <h2 className="text-md font-bold text-neutral-400">
+                      {label}
+                    </h2>
+                  </div>
+
+                  {/* --- MASONRY COMPONENT IMPLEMENTATION --- */}
+                  <Masonry
+                    breakpointCols={BREAKPOINT_MAPPING[gridCols]}
+                    className="my-masonry-grid"
+                    columnClassName="my-masonry-grid_column"
+                  >
+                    {items.map((item) => {
+                      const isItemSelected = selectedIds.has(item.media_id);
+                      return (
+                        <div
+                          key={item.media_id}
+                          onClick={() =>
+                            isSelectionMode
+                              ? toggleSelection(item.media_id)
+                              : openModal(item.media_id)
+                          }
+                          className={`relative w-full overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group mb-4 ${
+                            isItemSelected
+                              ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]"
+                              : "border-neutral-800 hover:border-neutral-600"
+                          }`}
+                        >
+                          {/* Checkbox Overlay */}
+                          <div
+                            className={`absolute top-2 left-2 z-30 transition-opacity ${
+                              isItemSelected
+                                ? "opacity-100"
+                                : "opacity-0 group-hover:opacity-100"
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSelection(item.media_id);
+                            }}
+                          >
+                            <div
+                              className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isItemSelected ? "bg-blue-500 border-blue-500" : "bg-black/40 border-white/50 backdrop-blur-md"}`}
+                            >
+                              {isItemSelected && <CheckBoxTickIcon />}
+                            </div>
+                          </div>
+
+                          {/* Media Content */}
+                          {item.type.startsWith("image/") ? (
+                            <ImageItem
+                              item={item}
+                              gridCols={GRID_SIZES_PROP[gridCols]}
+                            />
+                          ) : (
+                            <VideoItem item={item} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </Masonry>
+                </section>
+              );
+            })
           )}
         </div>
 
