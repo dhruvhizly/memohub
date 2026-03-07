@@ -41,6 +41,11 @@ const ViewMediaModal = ({
   const touchEndX = useRef<number | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [direction, setDirection] = useState<"left" | "right" | null>(null);
+  const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
+  const isDragging = useRef(false);
+  const startPan = useRef({ x: 0, y: 0 });
+  const initialPinch = useRef<{ dist: number; scale: number } | null>(null);
+  const lastTapTime = useRef<number>(0);
 
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -87,19 +92,169 @@ const ViewMediaModal = ({
   }, [mediaItems.length, selectedMediaIndex, setSelectedMediaIndex]);
 
   useEffect(() => {
+    setTransform({ scale: 1, x: 0, y: 0 });
+  }, [selectedMediaIndex]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (selectedMediaIndex === null) return;
-      if (e.key === "Escape") setSelectedMediaIndex(null);
+      if (e.key === "Escape") {
+        if (showInfo) setShowInfo(false);
+        else setSelectedMediaIndex(null);
+        return;
+      }
+      if (e.key === "i" || e.key === "I") {
+        setShowInfo((prev) => !prev);
+        return;
+      }
+      if (showInfo) return;
       if (e.key === "ArrowRight") handleNext();
       if (e.key === "ArrowLeft") handlePrev();
-      if (e.key === "i" || e.key === "I") setShowInfo((prev) => !prev);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedMediaIndex, handleNext, handlePrev]);
+  }, [selectedMediaIndex, handleNext, handlePrev, showInfo]);
 
   const selectedMedia =
     selectedMediaIndex !== null ? mediaItems[selectedMediaIndex] : null;
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.stopPropagation();
+    const delta = -e.deltaY;
+    if (delta === 0) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+
+    setTransform((prev) => {
+      const scaleStep = 0.1;
+      const newScale = Math.max(1, Math.min(prev.scale + (delta > 0 ? scaleStep : -scaleStep) * prev.scale, 5));
+
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const mx = clientX - cx;
+      const my = clientY - cy;
+
+      const factor = newScale / prev.scale;
+      const newX = mx - (mx - prev.x) * factor;
+      const newY = my - (my - prev.y) * factor;
+
+      return { scale: newScale, x: newScale === 1 ? 0 : newX, y: newScale === 1 ? 0 : newY };
+    });
+  };
+
+  const handleImageMouseDown = (e: React.MouseEvent) => {
+    if (transform.scale > 1) {
+      e.stopPropagation();
+      e.preventDefault();
+      isDragging.current = true;
+      startPan.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
+    }
+  };
+
+  const handleImageMouseMove = (e: React.MouseEvent) => {
+    if (isDragging.current && transform.scale > 1) {
+      e.stopPropagation();
+      e.preventDefault();
+      setTransform((prev) => ({
+        ...prev,
+        x: e.clientX - startPan.current.x,
+        y: e.clientY - startPan.current.y,
+      }));
+    }
+  };
+
+  const handleImageMouseUp = () => {
+    isDragging.current = false;
+  };
+
+  const handleDoubleTap = (clientX: number, clientY: number, rect: DOMRect) => {
+    setTransform((prev) => {
+      if (prev.scale > 1) {
+        return { scale: 1, x: 0, y: 0 };
+      }
+      const newScale = 3;
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const mx = clientX - cx;
+      const my = clientY - cy;
+      const newX = mx - mx * newScale;
+      const newY = my - my * newScale;
+      return { scale: newScale, x: newX, y: newY };
+    });
+  };
+
+  const handleImageTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      const now = Date.now();
+      if (now - lastTapTime.current < 300) {
+        e.stopPropagation();
+        const rect = e.currentTarget.getBoundingClientRect();
+        const touch = e.touches[0];
+        handleDoubleTap(touch.clientX, touch.clientY, rect);
+        lastTapTime.current = 0;
+        return;
+      }
+      lastTapTime.current = now;
+    }
+
+    if (e.touches.length === 2) {
+      e.stopPropagation();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      initialPinch.current = { dist, scale: transform.scale };
+    } else if (e.touches.length === 1 && transform.scale > 1) {
+      e.stopPropagation();
+      isDragging.current = true;
+      startPan.current = { x: e.touches[0].clientX - transform.x, y: e.touches[0].clientY - transform.y };
+    }
+  };
+
+  const handleImageTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && initialPinch.current) {
+      e.stopPropagation();
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      const scaleFactor = dist / initialPinch.current.dist;
+      const newScale = Math.max(1, Math.min(initialPinch.current.scale * scaleFactor, 5));
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const centerClientX = (t1.clientX + t2.clientX) / 2;
+      const centerClientY = (t1.clientY + t2.clientY) / 2;
+
+      setTransform((prev) => {
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const mx = centerClientX - cx;
+        const my = centerClientY - cy;
+
+        const factor = newScale / prev.scale;
+        const newX = mx - (mx - prev.x) * factor;
+        const newY = my - (my - prev.y) * factor;
+
+        return { scale: newScale, x: newScale === 1 ? 0 : newX, y: newScale === 1 ? 0 : newY };
+      });
+    } else if (e.touches.length === 1 && isDragging.current && transform.scale > 1) {
+      e.stopPropagation();
+      setTransform((prev) => ({
+        ...prev,
+        x: e.touches[0].clientX - startPan.current.x,
+        y: e.touches[0].clientY - startPan.current.y,
+      }));
+    }
+  };
+
+  const handleImageTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) {
+      initialPinch.current = null;
+    }
+    if (e.touches.length === 0) {
+      isDragging.current = false;
+    }
+  };
 
   return (
     selectedMedia && (
@@ -111,17 +266,17 @@ const ViewMediaModal = ({
         onTouchEnd={handleTouchEnd}
       >
         {/* --- CONTROLS --- */}
-        <div className="absolute top-0 left-0 w-full p-4 md:p-6 flex justify-between items-center z-50 pointer-events-none">
-          <div className="pointer-events-auto bg-black/40 backdrop-blur px-4 py-2 rounded-lg border border-white/10 text-white text-sm truncate max-w-[50%]">
+        <div className="absolute top-0 left-0 w-full p-2 md:p-6 flex justify-between items-center z-50 pointer-events-none">
+          <div className="pointer-events-auto bg-black/40 backdrop-blur px-3 py-1.5 md:px-4 md:py-2 rounded-lg border border-white/10 text-white text-xs md:text-sm truncate max-w-[50%]">
             {selectedMedia.filename}
           </div>
-          <div className="flex items-center gap-3 pointer-events-auto">
+          <div className="flex items-center gap-2 md:gap-3 pointer-events-auto">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setShowInfo(true);
               }}
-              className={`p-3 rounded-full transition-all border border-white/5 cursor-pointer ${
+              className={`p-2 md:p-3 rounded-full transition-all border border-white/5 cursor-pointer ${
                 showInfo ? "bg-blue-600" : "bg-white/10 hover:bg-white/20"
               }`}
             >
@@ -129,22 +284,33 @@ const ViewMediaModal = ({
             </button>
             <button
               onClick={handleDownload}
-              className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white cursor-pointer"
+              className="p-2 md:p-3 bg-white/10 hover:bg-white/20 rounded-full text-white cursor-pointer"
             >
               <DownloadIcon />
             </button>
             <button
               onClick={() => setSelectedMediaIndex(null)}
-              className="p-3 bg-white/10 hover:bg-red-500/20 rounded-full text-white cursor-pointer"
+              className="p-2 md:p-3 bg-white/10 hover:bg-red-500/20 rounded-full text-white cursor-pointer"
             >
               <CloseIcon />
             </button>
           </div>
         </div>
 
+        {/* --- OVERLAY FOR INFO MODE --- */}
+        {showInfo && (
+          <div
+            className="absolute inset-0 z-60 bg-black/60 cursor-default transition-opacity duration-300"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowInfo(false);
+            }}
+          />
+        )}
+
         {/* --- INFO --- */}
         <div
-          className={`absolute right-0 top-0 h-full w-full md:w-80 bg-neutral-900/95 backdrop-blur-2xl z-100 border-l border-white/10 p-8 transition-transform duration-300 ${
+          className={`absolute right-0 top-0 h-full w-full md:w-80 bg-neutral-900/95 backdrop-blur-2xl z-100 border-l border-white/10 p-4 md:p-8 transition-transform duration-300 ${
             showInfo ? "translate-x-0" : "translate-x-full"
           }`}
           onClick={(e) => e.stopPropagation()}
@@ -174,7 +340,7 @@ const ViewMediaModal = ({
 
         {/* --- MEDIA --- */}
         <div
-          className="flex items-center justify-between w-full h-full px-4"
+          className="flex items-center justify-between w-full h-full px-0 md:px-4"
           onClick={(e) => e.stopPropagation()}
         >
           <button
@@ -199,12 +365,29 @@ const ViewMediaModal = ({
               }`}
             >
               {selectedMedia.type.startsWith("image/") ? (
-                <div className="relative w-full h-full max-h-[85vh]">
+                <div
+                  className="relative w-full h-full max-h-[85vh] flex items-center justify-center overflow-hidden"
+                  style={{ touchAction: "none" }}
+                  onWheel={handleWheel}
+                  onMouseDown={handleImageMouseDown}
+                  onMouseMove={handleImageMouseMove}
+                  onMouseUp={handleImageMouseUp}
+                  onMouseLeave={handleImageMouseUp}
+                  onTouchStart={handleImageTouchStart}
+                  onTouchMove={handleImageTouchMove}
+                  onTouchEnd={handleImageTouchEnd}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    handleDoubleTap(e.clientX, e.clientY, rect);
+                  }}
+                >
                   <img
                     alt={selectedMedia.filename}
                     src={`${CONSTANTS.SERVER_URL}/media/view/${selectedMedia.media_id}`}
-                    className="object-contain shadow-2xl w-full max-h-[80vh]"
+                    className="object-contain shadow-2xl w-full max-h-[80vh] transition-transform duration-75 ease-out"
                     draggable={false}
+                    style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, cursor: transform.scale > 1 ? "grab" : "default" }}
                   />
                 </div>
               ) : (

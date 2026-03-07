@@ -301,6 +301,14 @@ const GalleryGrid = () => {
           padding-left: 16px; /* gutter size */
           background-clip: padding-box;
         }
+        @media (max-width: 640px) {
+          .my-masonry-grid {
+            margin-left: -8px;
+          }
+          .my-masonry-grid_column {
+            padding-left: 8px;
+          }
+        }
       `}</style>
 
       {/* --- CONFIRMATION MODAL --- */}
@@ -308,40 +316,40 @@ const GalleryGrid = () => {
 
       {/* --- SELECTION OVERLAY --- */}
       {isSelectionMode && (
-        <div className="fixed top-0 left-0 w-full z-50 bg-black text-white p-4 shadow-2xl flex justify-between items-center animate-in slide-in-from-top duration-300">
-          <div className="flex items-center gap-4">
+        <div className="fixed top-0 left-0 w-full z-50 bg-black text-white p-3 md:p-4 shadow-2xl flex justify-between items-center animate-in slide-in-from-top duration-300">
+          <div className="flex items-center gap-3 md:gap-4">
             <button
               onClick={() => setSelectedIds(new Set())}
               className="p-2 hover:bg-white/10 rounded-full transition-colors cursor-pointer"
             >
               <CloseIcon />
             </button>
-            <span className="font-bold text-lg">
+            <span className="font-bold text-base md:text-lg">
               {selectedIds.size} selected
             </span>
           </div>
           <button
             onClick={handleDeleteSelected}
-            className="bg-red-500 hover:bg-red-400 px-6 py-2 rounded-xl font-bold transition-all active:scale-95 shadow-lg cursor-pointer"
+            className="bg-red-500 hover:bg-red-400 px-4 md:px-6 py-2 rounded-xl font-bold transition-all active:scale-95 shadow-lg cursor-pointer text-sm md:text-base"
           >
-            Delete Items
+            Delete <span className="hidden sm:inline">Items</span>
           </button>
         </div>
       )}
 
       {/* --- HEADER --- */}
-      <header className="sticky top-0 w-full z-40 bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-900 px-4 py-4">
-        <div className="mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+      <header className="sticky top-0 w-full z-40 bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-900 px-3 py-3 md:px-4 md:py-4">
+        <div className="mx-auto flex flex-row justify-between items-center gap-2 md:gap-4">
           <h1
-            className="text-3xl font-extrabold tracking-tight cursor-pointer text-white hover:text-blue-400 transition-colors"
+            className="text-xl md:text-3xl font-extrabold tracking-tight cursor-pointer text-white hover:text-blue-400 transition-colors"
             onClick={() => window.location.reload()}
           >
             MemoHub
           </h1>
-          <div className="flex flex-wrap justify-center gap-3 items-center">
+          <div className="flex flex-wrap justify-center gap-2 md:gap-3 items-center">
             <label
               htmlFor="upload-input"
-              className="relative px-3 py-2.5 rounded-xl font-bold overflow-hidden cursor-pointer bg-blue-600 text-white shadow-lg hover:bg-blue-500 active:scale-95 transition-all flex gap-2.5 justify-center items-center"
+              className="relative px-3 py-2 md:py-2.5 rounded-xl font-bold overflow-hidden cursor-pointer bg-blue-600 text-white shadow-lg hover:bg-blue-500 active:scale-95 transition-all flex gap-2 md:gap-2.5 justify-center items-center"
             >
               {isUploading && (
                 <div
@@ -354,8 +362,15 @@ const GalleryGrid = () => {
                   <UploadingLoader />
                 </span>
               )}
-              <span className="relative z-10 text-sm">
-                {isUploading ? `${uploadProgress}%` : "Upload Media"}
+              <span className="relative z-10 text-xs md:text-sm whitespace-nowrap">
+                {isUploading ? (
+                  `${uploadProgress}%`
+                ) : (
+                  <>
+                    <span className="hidden sm:inline">Upload Media</span>
+                    <span className="sm:hidden">Upload</span>
+                  </>
+                )}
               </span>
             </label>
             <input
@@ -374,7 +389,7 @@ const GalleryGrid = () => {
       </header>
 
       {/* --- MAIN CONTENT --- */}
-      <main className="w-full h-full px-4 pt-8 pb-32">
+      <main className="w-full h-full px-2 md:px-4 pt-4 md:pt-8 pb-32">
         <div className="w-full space-y-12">
           {/* 1. LOADING STATE */}
           {isLoading && groupedMediaItems.length === 0 ? (
@@ -445,6 +460,12 @@ const GalleryGrid = () => {
                               ? toggleSelection(item.media_id)
                               : openModal(item.media_id)
                           }
+                          onContextMenu={(e) => {
+                            if (!isSelectionMode) {
+                              e.preventDefault();
+                              toggleSelection(item.media_id);
+                            }
+                          }}
                           className={`relative w-full overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group mb-4 ${
                             isItemSelected
                               ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]"
@@ -456,7 +477,7 @@ const GalleryGrid = () => {
                             className={`absolute top-2 left-2 z-30 transition-opacity ${
                               isItemSelected
                                 ? "opacity-100"
-                                : "opacity-0 group-hover:opacity-100"
+                                : "opacity-0 group-hover:opacity-100 hidden md:block"
                             }`}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -502,12 +523,12 @@ const GalleryGrid = () => {
 
       {/* --- VIEW CONTROLS --- */}
       {groupedMediaItems.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex bg-neutral-900/80 backdrop-blur-md border border-neutral-700 p-1.5 rounded-full shadow-2xl">
+        <div className="fixed bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex bg-neutral-900/80 backdrop-blur-md border border-neutral-700 p-1 md:p-1.5 rounded-full shadow-2xl scale-90 md:scale-100 origin-bottom">
           {["Comfort", "Compact", "Dense"].map((size) => (
             <button
               key={size}
               onClick={() => setGridCols(size as any)}
-              className={`px-4 py-2 text-sm font-bold rounded-full transition-all cursor-pointer ${
+              className={`px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-bold rounded-full transition-all cursor-pointer ${
                 gridCols === size
                   ? "bg-neutral-700 text-white"
                   : "text-neutral-400 hover:text-neutral-200"
@@ -522,7 +543,7 @@ const GalleryGrid = () => {
       {/* SCROLL TO TOP BUTTON */}
       <button
         onClick={scrollToTop}
-        className={`fixed bottom-6 right-6 p-4 bg-gray-800 hover:bg-blue-500 text-white rounded-full shadow-2xl transition-all duration-300 z-50 cursor-pointer ${showScrollTop ? "translate-y-0 opacity-100" : "translate-y-20 opacity-0"}`}
+        className={`fixed bottom-20 md:bottom-6 right-4 md:right-6 p-3 md:p-4 bg-gray-800 hover:bg-blue-500 text-white rounded-full shadow-2xl transition-all duration-300 z-50 cursor-pointer ${showScrollTop ? "translate-y-0 opacity-100" : "translate-y-20 opacity-0"}`}
       >
         <ScrollToTopIcon />
       </button>
