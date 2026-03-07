@@ -30,7 +30,7 @@ def signup(request: AuthRequest, response: Response, db: Session = Depends(get_d
     db.commit()
     db.refresh(user)
 
-    access_token = create_access_token(user.id)
+    access_token = create_access_token(user.id, user.username)
     refresh_token_str = create_refresh_token()
 
     refresh_token = RefreshToken(user_id=user.id, token=refresh_token_str)
@@ -60,7 +60,7 @@ def signup(request: AuthRequest, response: Response, db: Session = Depends(get_d
 
     os.makedirs(os.path.join(UPLOAD_DIR, user.id), exist_ok=True)
 
-    return user.id
+    return {"id": user.id, "name": user.username}
 
 @router.post("/login")
 def login(request: AuthRequest, response: Response, db: Session = Depends(get_db)):
@@ -76,7 +76,7 @@ def login(request: AuthRequest, response: Response, db: Session = Depends(get_db
     ).delete()
     db.commit()
 
-    access_token = create_access_token(user.id)
+    access_token = create_access_token(user.id, user.username)
     refresh_token_str = create_refresh_token()
 
     refresh_token = RefreshToken(user_id=user.id, token=refresh_token_str)
@@ -105,8 +105,7 @@ def login(request: AuthRequest, response: Response, db: Session = Depends(get_db
     )
 
     os.makedirs(os.path.join(UPLOAD_DIR, user.id), exist_ok=True)
-
-    return user.id
+    return {"id": user.id, "name": user.username}
 
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):

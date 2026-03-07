@@ -247,7 +247,7 @@ def list_media(
                 "total": 0, 
                 "page": page, 
                 "page_size": page_size, 
-                "medias": []
+                "groups": []
             }
         
         medias = (

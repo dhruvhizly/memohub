@@ -5,15 +5,15 @@ from fastapi import Request, Response, HTTPException
 from sqlalchemy.orm import Session
 from src.models import User, RefreshToken
 
-def create_access_token(userid: str) -> str:
+def create_access_token(userid: str, username: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_TOKEN_EXPIRE_MINUTES)
-    token = jwt.encode({"userid": userid, "exp": expire}, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    token = jwt.encode({"userid": userid, "username": username, "exp": expire}, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
     return token
 
 def create_refresh_token() -> str:
     return secrets.token_urlsafe(32)
 
-def refresh_access_token(refresh_token: str, response: Response, db: Session) -> str:
+def refresh_access_token(refresh_token: str, response: Response, db: Session) -> dict:
     token_entry = db.query(RefreshToken).filter(
         RefreshToken.token == refresh_token
     ).first()
@@ -36,7 +36,7 @@ def refresh_access_token(refresh_token: str, response: Response, db: Session) ->
     db.add(new_refresh_token)
     db.commit()
 
-    new_access_token = create_access_token(user.id)
+    new_access_token = create_access_token(user.id, user.username)
 
     cookie_params = dict(
         httponly=True,
@@ -58,7 +58,7 @@ def refresh_access_token(refresh_token: str, response: Response, db: Session) ->
         max_age=60 * 1,
         **cookie_params
     )
-    return user.id
+    return {"id": user.id, "name": user.username}
 
 def check_access_token(request: Request) -> None:
     token = request.cookies.get("access_token")
@@ -82,8 +82,16 @@ def check_access_token(request: Request) -> None:
                 status_code=403,
                 detail="Invalid token."
             )
+        
+        username = payload.get("username")
+        if not username:
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid token."
+            )
 
         request.state.userid = userid
+        request.state.username = username
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=401,
@@ -99,7 +107,7 @@ def check_access_token(request: Request) -> None:
 def require_authentication(request: Request, response: Response, db: Session) -> str:
     try:
         check_access_token(request)
-        return request.state.userid
+        return {"id": request.state.userid, "name": request.state.username}
 
     except HTTPException as e:
         if e.status_code == 403:
@@ -109,10 +117,11 @@ def require_authentication(request: Request, response: Response, db: Session) ->
         if not refresh_token:
             raise HTTPException(status_code=401, detail="User not logged in.")
 
-        user_id = refresh_access_token(
+        user_details = refresh_access_token(
             refresh_token=refresh_token,
             response=response,
             db=db
         )
-        request.state.userid = user_id
-        return user_id
+        request.state.userid = user_details["id"]
+        request.state.username = user_details["name"]
+        return user_details

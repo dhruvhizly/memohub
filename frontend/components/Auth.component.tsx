@@ -2,14 +2,16 @@
 
 import { FormEvent, useState } from "react";
 import { CONSTANTS } from "@/lib/constants";
+import { useUserName } from "@/lib/store";
 
 type AuthProps = {
   setUserId: (newUserid: string) => void;
+  setUsername: (newUsername: string) => void;
 };
 
-const Auth = ({ setUserId }: AuthProps) => {
+const Auth = ({ setUserId, setUsername }: AuthProps) => {
   const [mode, setMode] = useState<"LOGIN" | "SIGNUP">("LOGIN");
-  const [username, setUsername] = useState("");
+  const username = useUserName((s) => s.username);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
@@ -48,8 +50,9 @@ const Auth = ({ setUserId }: AuthProps) => {
         return;
       }
 
-      const userid = await res.json();
-      setUserId(userid);
+      const {id, name} = await res.json();
+      setUserId(id);
+      setUsername(name);
     } catch (err: any) {
       setMsg(err.message || "Network error");
     } finally {

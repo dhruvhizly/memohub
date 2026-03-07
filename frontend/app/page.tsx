@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CONSTANTS } from "@/lib/constants";
-import { useUserId } from "@/lib/store";
+import { useUserId, useUserName } from "@/lib/store";
 import Auth from "@/components/Auth.component";
 import Loader from "@/components/Loader.component";
 import GalleryGrid from "@/components/GalleryGrid.component";
@@ -10,6 +10,7 @@ import GalleryGrid from "@/components/GalleryGrid.component";
 const Home = () => {
   const userid = useUserId((s) => s.userid);
   const setUserId = useUserId((s) => s.setUserId);
+  const setUsername = useUserName((s) => s.setUsername);
   const [loading, setLoading] = useState(true);
 
   const checkAuthStatus = async () => {
@@ -26,11 +27,13 @@ const Home = () => {
         return;
       }
 
-      const userId = await res.json();
-      setUserId(userId);
+      const {id, name} = await res.json();
+      setUserId(id);
+      setUsername(name);
     } catch (err) {
       console.error("auth check failed:", err);
       setUserId("");
+      setUsername("");
     } finally {
       setLoading(false);
     }
@@ -44,7 +47,7 @@ const Home = () => {
     return <Loader message="Loading Account..." />;
   }
 
-  return userid ? <GalleryGrid /> : <Auth setUserId={setUserId} />;
+  return userid ? <GalleryGrid /> : <Auth setUserId={setUserId} setUsername={setUsername} />;
 };
 
 export default Home;

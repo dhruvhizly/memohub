@@ -2,7 +2,6 @@
 import axios from "axios";
 import ViewMediaModal from "@/components/ViewMediaModal.component";
 import { CONSTANTS } from "@/lib/constants";
-import { useUserId } from "@/lib/store";
 import {
   GroupedMediaItem,
   GroupedMediaResponse,
@@ -21,6 +20,7 @@ import { VideoItem } from "./VideoItem.component";
 import { ImageItem } from "./ImageItem.component";
 import { ConfirmationModal } from "./ConfirmationModal.component";
 import { ConfirmationModalState } from "@/interfaces/common_interfaces";
+import { UserModal } from "./UserModal.component";
 
 type GridMode = "Comfort" | "Compact" | "Dense";
 
@@ -86,7 +86,6 @@ const GalleryGrid = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedIds.size > 0;
   const observerTarget = useRef<HTMLDivElement>(null);
-  const setUserId = useUserId((s) => s.setUserId);
   const flatMediaItems = useMemo(
     () => groupedMediaItems.flatMap(({ label, items }) => items),
     [groupedMediaItems],
@@ -207,7 +206,7 @@ const GalleryGrid = () => {
       if (isLoading && !resetList && groupedMediaItems.length > 0) return;
       setIsLoading(true);
       try {
-        const endpoint = new URL("/media/", CONSTANTS.SERVER_URL);
+        const endpoint = new URL("/media", CONSTANTS.SERVER_URL);
         endpoint.searchParams.append("page", pageNum.toString());
         endpoint.searchParams.append("page_size", PAGE_SIZE.toString());
 
@@ -369,12 +368,7 @@ const GalleryGrid = () => {
                 e.target.files && handleUpload(Array.from(e.target.files))
               }
             />
-            <button
-              onClick={() => setUserId("")}
-              className="px-4 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-red-400 font-bold text-sm hover:bg-red-950/30 cursor-pointer"
-            >
-              Logout
-            </button>
+            <UserModal />
           </div>
         </div>
       </header>
@@ -404,8 +398,12 @@ const GalleryGrid = () => {
           ) : (
             /* 3. MASONRY GRID STATE */
             groupedMediaItems.map(({ label, items }) => {
-              const allSelected = items.every((i) => selectedIds.has(i.media_id));
-              const someSelected = items.some((i) => selectedIds.has(i.media_id));
+              const allSelected = items.every((i) =>
+                selectedIds.has(i.media_id),
+              );
+              const someSelected = items.some((i) =>
+                selectedIds.has(i.media_id),
+              );
               const isIndeterminate = someSelected && !allSelected;
 
               return (

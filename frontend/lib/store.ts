@@ -1,4 +1,4 @@
-import { Userid } from "@/interfaces/zustand_states";
+import { Userid, UserName } from "@/interfaces/zustand_states";
 import { create } from "zustand";
 
 const useUserId = create<Userid>((set) => ({
@@ -6,4 +6,9 @@ const useUserId = create<Userid>((set) => ({
   setUserId: (newUserid: string) => set({ userid: newUserid }),
 }));
 
-export { useUserId };
+const useUserName = create<UserName>((set) => ({
+  username: "",
+  setUsername: (newUsername: string) => set({ username: newUsername }),
+}));
+
+export { useUserId, useUserName };
