@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { SubmitEvent, useState } from "react";
 import { CONSTANTS } from "@/lib/constants";
 import { useUserName } from "@/lib/store";
 
@@ -19,7 +19,7 @@ const Auth = ({ setUserId, setUsername }: AuthProps) => {
   const handleModeChange = () =>
     setMode((prev) => (prev == "LOGIN" ? "SIGNUP" : "LOGIN"));
 
-  const handleAuth = async (e: FormEvent) => {
+  const handleAuth = async (e: SubmitEvent) => {
     e.preventDefault();
     setLoading(true);
     setMsg("");

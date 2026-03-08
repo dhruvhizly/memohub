@@ -32,7 +32,7 @@ interface ViewMediaModalProps {
   >;
 }
 
-const ViewMediaModal = ({
+export const ViewMediaModal = ({
   mediaItems,
   selectedMediaIndex,
   onChangeSelectedMediaIndex: setSelectedMediaIndex,
@@ -437,4 +437,3 @@ const ViewMediaModal = ({
   );
 };
 
-export default ViewMediaModal;
