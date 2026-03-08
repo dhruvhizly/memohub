@@ -22,17 +22,11 @@ import {
   MasonryStyles,
   ScrollToTopButton,
 } from "@/components/GalleryCommon.component";
-import {
-  GroupedMediaItem,
-  GroupedMediaResponse,
-  MediaItem,
-} from "@/interfaces/media_response";
+import { MediaItem } from "@/interfaces/media_response";
 
 // --- MAIN COMPONENT ---
 const GalleryBin = () => {
-  const [groupedMediaItems, setGroupedMediaItems] = useState<
-    Array<GroupedMediaItem>
-  >([]);
+  const [mediaItems, setMediaItems] = useState<Array<MediaItem>>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const observerTarget = useRef<HTMLDivElement>(null);
@@ -44,10 +38,6 @@ const GalleryBin = () => {
   const [mounted, setMounted] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedIds.size > 0;
-  const flatMediaItems = useMemo(
-    () => groupedMediaItems.flatMap(({ label, items }) => items),
-    [groupedMediaItems],
-  );
   const [confirmationModalState, setConfirmationModalState] =
     useState<ConfirmationModalState>({
       title: "",
@@ -69,18 +59,16 @@ const GalleryBin = () => {
     });
   };
 
-  const toggleGroupSelection = (items: MediaItem[]) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      const allSelected = items.every((item) => next.has(item.media_id));
+  const areAllSelected =
+    mediaItems.length > 0 &&
+    mediaItems.every((item) => selectedIds.has(item.media_id));
 
-      if (allSelected) {
-        items.forEach((item) => next.delete(item.media_id));
-      } else {
-        items.forEach((item) => next.add(item.media_id));
-      }
-      return next;
-    });
+  const toggleSelectAll = () => {
+    if (areAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(mediaItems.map((item) => item.media_id)));
+    }
   };
 
   const handleRestoreSelected = async () => {
@@ -94,13 +82,8 @@ const GalleryBin = () => {
 
       if (res.data.status === "success") {
         const restoredIds = new Set(res.data.restored);
-        setGroupedMediaItems((prev) =>
-          prev
-            .map(({ label, items }) => ({
-              label,
-              items: items.filter((item) => !restoredIds.has(item.media_id)),
-            }))
-            .filter(({ items }) => items.length > 0),
+        setMediaItems((prev) =>
+          prev.filter((item) => !restoredIds.has(item.media_id)),
         );
         setSelectedIds(new Set());
       }
@@ -121,15 +104,8 @@ const GalleryBin = () => {
 
         if (res.data.status === "success") {
           const deletedIdsFromServer = new Set(res.data.deleted);
-          setGroupedMediaItems((prev) =>
-            prev
-              .map(({ label, items }) => ({
-                label,
-                items: items.filter(
-                  (item) => !deletedIdsFromServer.has(item.media_id),
-                ),
-              }))
-              .filter(({ items }) => items.length > 0),
+          setMediaItems((prev) =>
+            prev.filter((item) => !deletedIdsFromServer.has(item.media_id)),
           );
           setSelectedIds(new Set());
         }
@@ -150,7 +126,7 @@ const GalleryBin = () => {
   };
 
   const openModal = (id: string) => {
-    const index = flatMediaItems.findIndex((m) => m.media_id === id);
+    const index = mediaItems.findIndex((m) => m.media_id === id);
     setSelectedMediaIndex(index);
   };
 
@@ -165,36 +141,26 @@ const GalleryBin = () => {
 
   const fetchBinMedia = useCallback(
     async (pageNum: number, resetList = false) => {
-      if (isLoading && !resetList && groupedMediaItems.length > 0) return;
+      if (isLoading && !resetList && mediaItems.length > 0) return;
       setIsLoading(true);
       try {
         const endpoint = new URL("/bin", CONSTANTS.SERVER_URL);
         endpoint.searchParams.append("page", pageNum.toString());
         endpoint.searchParams.append("page_size", PAGE_SIZE.toString());
 
-        const res = await axios.get<GroupedMediaResponse>(endpoint.toString(), {
+        const res = await axios.get<{
+          total: number;
+          page: number;
+          page_size: number;
+          medias: MediaItem[];
+        }>(endpoint.toString(), {
           withCredentials: true,
         });
-        const { groups, total } = res.data;
+        const { medias, total } = res.data;
 
-        setGroupedMediaItems((prev) => {
-          if (resetList) return groups;
-
-          const lastGroup = prev[prev.length - 1];
-          const firstNewGroup = groups[0];
-
-          if (
-            lastGroup &&
-            firstNewGroup &&
-            lastGroup.label === firstNewGroup.label
-          ) {
-            const mergedGroup: GroupedMediaItem = {
-              label: lastGroup.label,
-              items: [...lastGroup.items, ...firstNewGroup.items],
-            };
-            return [...prev.slice(0, -1), mergedGroup, ...groups.slice(1)];
-          }
-          return [...prev, ...groups];
+        setMediaItems((prev) => {
+          if (resetList) return medias;
+          return [...medias, ...prev];
         });
 
         setHasMore(pageNum * PAGE_SIZE < total);
@@ -205,7 +171,7 @@ const GalleryBin = () => {
         setIsLoading(false);
       }
     },
-    [isLoading, groupedMediaItems.length],
+    [isLoading, mediaItems.length],
   );
 
   useEffect(() => {
@@ -305,14 +271,14 @@ const GalleryBin = () => {
 
       {/* --- MAIN CONTENT --- */}
       <main className="w-full h-full px-2 md:px-4 pt-4 md:pt-8 pb-32">
-        <div className="w-full space-y-12">
+        <div className="w-full space-y-5">
           {/* 1. LOADING STATE */}
-          {isLoading && groupedMediaItems.length === 0 ? (
+          {isLoading && mediaItems.length === 0 ? (
             <section className="space-y-4">
               <div className="h-6 w-32 bg-neutral-900 rounded-md animate-pulse mb-6 border-l-4 border-neutral-800" />
               <GallerySkeleton mode={gridCols} />
             </section>
-          ) : groupedMediaItems.length === 0 ? (
+          ) : mediaItems.length === 0 ? (
             /* 2. EMPTY STATE */
             <div className="flex flex-col items-center justify-center text-center animate-in fade-in duration-500 mt-20">
               <div className="mb-6 opacity-80">
@@ -327,98 +293,83 @@ const GalleryBin = () => {
             </div>
           ) : (
             /* 3. MASONRY GRID STATE */
-            groupedMediaItems.map(({ label, items }) => {
-              const allSelected = items.every((i) =>
-                selectedIds.has(i.media_id),
-              );
-              const someSelected = items.some((i) =>
-                selectedIds.has(i.media_id),
-              );
-              const isIndeterminate = someSelected && !allSelected;
-
-              return (
-                <section key={label} className="space-y-4">
-                  <div className="flex items-center gap-3 py-1 border-l-4 border-blue-600 pl-3">
-                    {isSelectionMode && (
-                      <button
-                        onClick={() => toggleGroupSelection(items)}
-                        className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors cursor-pointer ${
-                          allSelected || isIndeterminate
-                            ? "bg-blue-600 border-blue-600"
-                            : "border-neutral-600 hover:border-neutral-400"
+            <>
+              <div className="flex items-center gap-3 pb-4">
+                <button
+                  onClick={toggleSelectAll}
+                  className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors cursor-pointer ${
+                    areAllSelected || selectedIds.size > 0
+                      ? "bg-blue-600 border-blue-600"
+                      : "border-neutral-600 hover:border-neutral-400"
+                  }`}
+                >
+                  {areAllSelected && <CheckBoxTickIcon />}
+                  {!areAllSelected && selectedIds.size > 0 && (
+                    <div className="w-3 h-0.5 bg-white rounded-full" />
+                  )}
+                </button>
+                <span className="text-sm font-bold text-neutral-400">
+                  Select All
+                </span>
+              </div>
+              <Masonry
+                breakpointCols={BREAKPOINT_MAPPING[gridCols]}
+                className="my-masonry-grid"
+                columnClassName="my-masonry-grid_column"
+              >
+                {mediaItems.map((item) => {
+                  const isItemSelected = selectedIds.has(item.media_id);
+                  return (
+                    <div
+                      key={item.media_id}
+                      onClick={() =>
+                        isSelectionMode
+                          ? toggleSelection(item.media_id)
+                          : openModal(item.media_id)
+                      }
+                      onContextMenu={(e) => {
+                        if (!isSelectionMode) {
+                          e.preventDefault();
+                          toggleSelection(item.media_id);
+                        }
+                      }}
+                      className={`relative w-full overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group mb-4 ${
+                        isItemSelected
+                          ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]"
+                          : "border-neutral-800 hover:border-neutral-600"
+                      }`}
+                    >
+                      <div
+                        className={`absolute top-2 left-2 z-30 transition-opacity ${
+                          isItemSelected
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 hidden md:block"
                         }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSelection(item.media_id);
+                        }}
                       >
-                        {allSelected && <CheckBoxTickIcon />}
-                        {isIndeterminate && (
-                          <div className="w-3 h-0.5 bg-white rounded-full" />
-                        )}
-                      </button>
-                    )}
-                    <h2 className="text-md font-bold text-neutral-400">
-                      {label}
-                    </h2>
-                  </div>
-
-                  <Masonry
-                    breakpointCols={BREAKPOINT_MAPPING[gridCols]}
-                    className="my-masonry-grid"
-                    columnClassName="my-masonry-grid_column"
-                  >
-                    {items.map((item) => {
-                      const isItemSelected = selectedIds.has(item.media_id);
-                      return (
                         <div
-                          key={item.media_id}
-                          onClick={() =>
-                            isSelectionMode
-                              ? toggleSelection(item.media_id)
-                              : openModal(item.media_id)
-                          }
-                          onContextMenu={(e) => {
-                            if (!isSelectionMode) {
-                              e.preventDefault();
-                              toggleSelection(item.media_id);
-                            }
-                          }}
-                          className={`relative w-full overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group mb-4 ${
-                            isItemSelected
-                              ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]"
-                              : "border-neutral-800 hover:border-neutral-600"
-                          }`}
+                          className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isItemSelected ? "bg-blue-500 border-blue-500" : "bg-black/40 border-white/50 backdrop-blur-md"}`}
                         >
-                          <div
-                            className={`absolute top-2 left-2 z-30 transition-opacity ${
-                              isItemSelected
-                                ? "opacity-100"
-                                : "opacity-0 group-hover:opacity-100 hidden md:block"
-                            }`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSelection(item.media_id);
-                            }}
-                          >
-                            <div
-                              className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isItemSelected ? "bg-blue-500 border-blue-500" : "bg-black/40 border-white/50 backdrop-blur-md"}`}
-                            >
-                              {isItemSelected && <CheckBoxTickIcon />}
-                            </div>
-                          </div>
-
-                          {item.type.startsWith("image/") ? (
-                            <ImageItem
-                              item={item}
-                              gridCols={GRID_SIZES_PROP[gridCols]}
-                            />
-                          ) : (
-                            <VideoItem item={item} />
-                          )}
+                          {isItemSelected && <CheckBoxTickIcon />}
                         </div>
-                      );
-                    })}
-                  </Masonry>
-                </section>
-              );
-            })
+                      </div>
+
+                      {item.type.startsWith("image/") ? (
+                        <ImageItem
+                          item={item}
+                          gridCols={GRID_SIZES_PROP[gridCols]}
+                        />
+                      ) : (
+                        <VideoItem item={item} />
+                      )}
+                    </div>
+                  );
+                })}
+              </Masonry>
+            </>
           )}
         </div>
 
@@ -427,7 +378,7 @@ const GalleryBin = () => {
       </main>
 
       {/* --- VIEW CONTROLS --- */}
-      {groupedMediaItems.length > 0 && (
+      {mediaItems.length > 0 && (
         <GridControls gridCols={gridCols} setGridCols={setGridCols} />
       )}
 
@@ -436,7 +387,7 @@ const GalleryBin = () => {
 
       {/* --- MEDIA VIEW MODAL --- */}
       <ViewMediaModal
-        mediaItems={flatMediaItems}
+        mediaItems={mediaItems}
         selectedMediaIndex={selectedMediaIndex}
         onChangeSelectedMediaIndex={setSelectedMediaIndex}
       />

@@ -15,8 +15,8 @@ export const ImageItem = ({ item, gridCols }: ImageItemProps) => {
 
   return (
     <Image
-      src={thumbnailError ? fullUrl : thumbnailUrl}
       alt={item.filename}
+      src={thumbnailError ? fullUrl : thumbnailUrl}
       width={0}
       height={0}
       sizes={gridCols}

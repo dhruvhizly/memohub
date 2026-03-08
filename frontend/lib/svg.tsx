@@ -218,3 +218,44 @@ export const RecycleBinIcon = () => (
     <path d="M14 11v6" />
   </svg>
 );
+
+
+export const Logo = () => (
+//   <svg viewBox="50 40 140 120" xmlns="http://www.w3.org/2000/svg" height="60" width="60">
+
+//   <rect x="50" y="70" width="90" height="60" rx="16" fill="#E4E6FF"/>
+//   <rect x="65" y="55" width="90" height="60" rx="16" fill="#B8BEFF"/>
+//   <rect x="80" y="40" width="90" height="60" rx="16" fill="#6C5CE7"/>
+
+
+//   <rect x="105" y="55" width="35" height="28" rx="10" fill="white"/>
+
+
+//   <rect x="128" y="62" width="22" height="12" rx="3" fill="white"/>
+
+//   <rect x="112" y="78" width="8" height="5" rx="2" fill="#E4E6FF"/>
+
+//   <circle cx="138" cy="91" r="10" fill="#6C5CE7"/>
+
+//   <circle cx="138" cy="91" r="6" fill="#3F34B4"/>
+
+//   <circle cx="141" cy="88" r="2.3" fill="white" opacity="0.9"/>
+
+// </svg>
+
+<svg viewBox="40 25 140 120" xmlns="http://www.w3.org/2000/svg" height="60" width="60">
+
+  <rect x="50" y="70" width="90" height="60" rx="16" fill="#E4E6FF"/>
+  <rect x="65" y="55" width="90" height="60" rx="16" fill="#B8BEFF"/>
+  <rect x="80" y="40" width="90" height="60" rx="16" fill="#6C5CE7"/>
+
+  <rect x="105" y="55" width="40" height="28" rx="10" fill="white"/>
+  <rect x="110" y="68" width="8" height="5" rx="2" fill="#E4E6FF"/>
+  <circle cx="125" cy="69" r="10" fill="#6C5CE7"/>
+  <circle cx="125" cy="69" r="6" fill="#3F34B4"/>
+  <circle cx="125" cy="66" r="2.3" fill="white" opacity="0.9"/>
+
+</svg>
+
+
+)

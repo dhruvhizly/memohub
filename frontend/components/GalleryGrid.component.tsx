@@ -8,6 +8,7 @@ import {
   CheckBoxTickIcon,
   CloseIcon,
   GhostIcon,
+  Logo,
   UploadingLoader,
 } from "@/lib/svg";
 import { ConfirmationModalState } from "@/interfaces/common_interfaces";
@@ -263,7 +264,7 @@ const GalleryGrid = () => {
             </div>
             <button
               onClick={handleDeleteSelected}
-              className="bg-red-500 hover:bg-red-400 px-4 md:px-6 py-2 rounded-xl font-bold transition-all active:scale-95 shadow-lg cursor-pointer text-sm md:text-base"
+              className="bg-blue-500 hover:bg-blue-400 px-4 md:px-6 py-2 rounded-xl font-bold transition-all active:scale-95 shadow-lg cursor-pointer text-sm md:text-base"
             >
               Move to Bin
             </button>
@@ -272,13 +273,19 @@ const GalleryGrid = () => {
         )}
 
       {/* --- HEADER --- */}
-      <header className="sticky top-0 w-full z-40 bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-900 px-3 py-3 md:px-4 md:py-4">
+      <header className="sticky top-0 w-full z-40 bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-900 px-2 py-2 md:px-4 md:py-4">
         <div className="mx-auto flex flex-row justify-between items-center gap-2 md:gap-4">
           <h1
-            className="text-xl md:text-3xl font-extrabold tracking-tight cursor-pointer text-white hover:text-blue-400 transition-colors"
+            className="text-xl md:text-3xl flex gap-3 justify-center items-center font-extrabold tracking-tight cursor-pointer text-white hover:text-blue-400 transition-colors"
             onClick={() => window.location.reload()}
           >
-            MemoHub
+            <span>
+              <Logo />
+            </span>
+            <span>
+              MemoHub
+            </span>
+            
           </h1>
           <div className="flex flex-wrap justify-center gap-2 md:gap-3 items-center">
             <label
