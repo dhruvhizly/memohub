@@ -317,7 +317,7 @@ const GalleryBin = () => {
                 className="my-masonry-grid"
                 columnClassName="my-masonry-grid_column"
               >
-                {mediaItems.map((item) => {
+                {mediaItems.map((item, index) => {
                   const isItemSelected = selectedIds.has(item.media_id);
                   return (
                     <div
@@ -360,7 +360,7 @@ const GalleryBin = () => {
                       {item.type.startsWith("image/") ? (
                         <ImageItem
                           item={item}
-                          gridCols={GRID_SIZES_PROP[gridCols]}
+                          priority={index < 12}
                         />
                       ) : (
                         <VideoItem item={item} />

@@ -22,7 +22,6 @@ import {
   GallerySkeleton,
   GridControls,
   GridMode,
-  GRID_SIZES_PROP,
   LoadMoreSpinner,
   MasonryStyles,
   ScrollToTopButton,
@@ -353,7 +352,7 @@ const GalleryGrid = () => {
             </div>
           ) : (
             /* 3. MASONRY GRID STATE */
-            groupedMediaItems.map(({ label, items }) => {
+            groupedMediaItems.map(({ label, items }, groupIndex) => {
               const allSelected = items.every((i) =>
                 selectedIds.has(i.media_id),
               );
@@ -391,7 +390,7 @@ const GalleryGrid = () => {
                     className="my-masonry-grid"
                     columnClassName="my-masonry-grid_column"
                   >
-                    {items.map((item) => {
+                    {items.map((item, index) => {
                       const isItemSelected = selectedIds.has(item.media_id);
                       return (
                         <div
@@ -436,7 +435,7 @@ const GalleryGrid = () => {
                           {item.type.startsWith("image/") ? (
                             <ImageItem
                               item={item}
-                              gridCols={GRID_SIZES_PROP[gridCols]}
+                              priority={groupIndex === 0 && index < 12}
                             />
                           ) : (
                             <VideoItem item={item} />
