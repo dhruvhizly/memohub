@@ -187,11 +187,11 @@ const GalleryBin = () => {
           fetchBinMedia(page + 1);
         }
       },
-      { threshold: 0.1, rootMargin: "1000px" },
+      { threshold: 0.1, rootMargin: "2000px" },
     );
     if (observerTarget.current) observer.observe(observerTarget.current);
     return () => observer.disconnect();
-  }, [hasMore, isLoading, page, fetchBinMedia]);
+  }, [hasMore, isLoading, fetchBinMedia]);
 
   useEffect(() => {
     document.body.style.overflow =

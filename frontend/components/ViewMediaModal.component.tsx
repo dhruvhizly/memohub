@@ -385,7 +385,7 @@ export const ViewMediaModal = ({
                   <img
                     alt={selectedMedia.filename}
                     src={`${CONSTANTS.SERVER_URL}/media/view/${selectedMedia.media_id}`}
-                    className="object-contain shadow-2xl w-full max-h-[80vh] transition-transform duration-75 ease-out"
+                    className="object-contain shadow-2xl w-full max-h-[80vh] transition-transform duration-20 ease-in-out"
                     draggable={false}
                     style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, cursor: transform.scale > 1 ? "grab" : "default" }}
                   />
