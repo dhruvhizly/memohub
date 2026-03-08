@@ -6,6 +6,7 @@ from src.core.config import UPLOAD_DIR
 from fastapi.middleware.cors import CORSMiddleware
 from src.api.v1.routes.auth import router as auth_router
 from src.api.v1.routes.media import router as media_router
+from src.api.v1.routes.media_bin import router as media_bin_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,3 +30,4 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(media_router)
+app.include_router(media_bin_router)

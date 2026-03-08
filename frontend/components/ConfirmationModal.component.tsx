@@ -2,11 +2,12 @@
 
 import { ConfirmationModalState } from "@/interfaces/common_interfaces";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 type ConfirmationModalProps = {state: ConfirmationModalState}; 
 
 export const ConfirmationModal = ({state}: ConfirmationModalProps) => {
-  const {title, confirmText, cancelText, onConfirm, onCancel} = state;
+  const {title, subtext, confirmText, cancelText, onConfirm, onCancel} = state;
   const [wiggle, setWiggle] = useState(false);
 
   const triggerWiggle = () => {
@@ -15,7 +16,7 @@ export const ConfirmationModal = ({state}: ConfirmationModalProps) => {
   };
 
   return (
-    title && <div
+    title && createPortal(<div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onMouseDown={triggerWiggle}
     >
@@ -25,9 +26,12 @@ export const ConfirmationModal = ({state}: ConfirmationModalProps) => {
           wiggle ? "animate-wiggle" : ""
         }`}
       >
-        <h2 className="text-lg font-bold text-white mb-6">
+        <h2 className="text-lg font-bold text-white mb-2">
           {title}
         </h2>
+        <h5 className="text-sm font-semibold text-gray-400 mb-6">
+          {subtext}
+        </h5>
 
         <div className="flex justify-end gap-3">
           <button
@@ -72,6 +76,6 @@ export const ConfirmationModal = ({state}: ConfirmationModalProps) => {
           animation: wiggle 0.35s ease-in-out;
         }
       `}</style>
-    </div>
+    </div>, document.body)
   );
 }

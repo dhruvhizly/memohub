@@ -24,17 +24,19 @@ def refresh_access_token(refresh_token: str, response: Response, db: Session) ->
     user = db.query(User).filter(User.id == token_entry.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    now = datetime.now(timezone.utc)
+    created_at = token_entry.created_at.replace(tzinfo=timezone.utc) if token_entry.created_at.tzinfo is None else token_entry.created_at
 
-    db.delete(token_entry)
-    db.commit()
-
-    new_refresh_token_str = create_refresh_token()
-    new_refresh_token = RefreshToken(
-        user_id=user.id,
-        token=new_refresh_token_str
-    )
-    db.add(new_refresh_token)
-    db.commit()
+    if (now - created_at) > timedelta(days=1):
+        db.delete(token_entry)
+        db.commit()
+        new_refresh_token_str = create_refresh_token()
+        new_refresh_token = RefreshToken(user_id=user.id, token=new_refresh_token_str)
+        db.add(new_refresh_token)
+        db.commit()
+    else:
+        new_refresh_token_str = token_entry.token
 
     new_access_token = create_access_token(user.id, user.username)
 

@@ -10,8 +10,8 @@ import {
   InfoIcon,
 } from "@/lib/svg";
 import { useEffect, useState, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { MediaItem } from "@/interfaces/media_response";
-import Image from "next/image";
 
 const DetailItem = ({ label, value }: { label: string; value: string }) => {
   return (
@@ -257,7 +257,7 @@ const ViewMediaModal = ({
   };
 
   return (
-    selectedMedia && (
+    selectedMedia && createPortal(
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md animate-modal-enter"
         onClick={() => setSelectedMediaIndex(null)}
@@ -431,7 +431,8 @@ const ViewMediaModal = ({
             animation: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           }
         `}</style>
-      </div>
+      </div>,
+      document.body
     )
   );
 };

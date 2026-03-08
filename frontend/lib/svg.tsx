@@ -162,19 +162,59 @@ export const GhostIcon = () => (
 );
 
 export const UploadingLoader = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="16" height="16" fill="none">
-    <circle cx="32" cy="32" r="26" stroke="white" strokeWidth="12" strokeOpacity="0.2"/>
-    <circle cx="32" cy="32" r="26" stroke="white" strokeWidth="12"
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 64 64"
+    width="16"
+    height="16"
+    fill="none"
+  >
+    <circle
+      cx="32"
+      cy="32"
+      r="26"
+      stroke="white"
+      strokeWidth="12"
+      strokeOpacity="0.2"
+    />
+    <circle
+      cx="32"
+      cy="32"
+      r="26"
+      stroke="white"
+      strokeWidth="12"
       strokeLinecap="round"
       strokeDasharray="60 104"
-      strokeDashoffset="0">
+      strokeDashoffset="0"
+    >
       <animateTransform
         attributeName="transform"
         type="rotate"
         from="0 32 32"
         to="360 32 32"
         dur="0.9s"
-        repeatCount="indefinite"/>
+        repeatCount="indefinite"
+      />
     </circle>
   </svg>
-)
+);
+
+export const RecycleBinIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M3 6h18" />
+    <path d="M8 6V4h8v2" />
+    <rect x="5" y="6" width="14" height="14" rx="2" />
+    <path d="M10 11v6" />
+    <path d="M14 11v6" />
+  </svg>
+);

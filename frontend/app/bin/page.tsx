@@ -5,9 +5,9 @@ import { CONSTANTS } from "@/lib/constants";
 import { useUserId, useUserName } from "@/lib/store";
 import Auth from "@/components/Auth.component";
 import Loader from "@/components/Loader.component";
-import GalleryGrid from "@/components/GalleryGrid.component";
+import GalleryBin from "@/components/GalleryBin.component";
 
-const Home = () => {
+const BinPage = () => {
   const userid = useUserId((s) => s.userid);
   const setUserId = useUserId((s) => s.setUserId);
   const setUsername = useUserName((s) => s.setUsername);
@@ -27,7 +27,7 @@ const Home = () => {
         return;
       }
 
-      const {id, name} = await res.json();
+      const { id, name } = await res.json();
       setUserId(id);
       setUsername(name);
     } catch (err) {
@@ -47,7 +47,11 @@ const Home = () => {
     return <Loader message="Loading..." />;
   }
 
-  return userid ? <GalleryGrid /> : <Auth setUserId={setUserId} setUsername={setUsername} />;
+  return userid ? (
+    <GalleryBin />
+  ) : (
+    <Auth setUserId={setUserId} setUsername={setUsername} />
+  );
 };
 
-export default Home;
+export default BinPage;

@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
 type Props = {
   message?: string;
   bg?: string;
@@ -15,8 +18,13 @@ export default function Loader({
   const stroke = Math.max(4, Math.round(size * 0.07));
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
+  const [mounted, setMounted] = useState(false);
 
-  return (
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  return mounted && createPortal(
     <div
       role="status"
       aria-live="polite"
@@ -119,6 +127,7 @@ export default function Loader({
           }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -2,7 +2,7 @@ import uuid
 from src.db.sql_alchemy import Base
 from datetime import datetime, timezone
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, ForeignKey, DateTime, Integer, LargeBinary, func
+from sqlalchemy import String, ForeignKey, DateTime, Integer, LargeBinary, Boolean, func
 
 class Media(Base):
     __tablename__ = "media"
@@ -22,6 +22,8 @@ class Media(Base):
         server_default=func.now(),
         nullable=False
     )
+    in_bin: Mapped[bool] = mapped_column(Boolean, default=False)
+    binned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     owner_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("users.id"),

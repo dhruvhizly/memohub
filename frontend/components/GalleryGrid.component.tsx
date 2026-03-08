@@ -1,5 +1,6 @@
 "use client";
 import axios from "axios";
+import { createPortal } from "react-dom";
 import ViewMediaModal from "@/components/ViewMediaModal.component";
 import { CONSTANTS } from "@/lib/constants";
 import {
@@ -13,6 +14,7 @@ import {
   CheckBoxTickIcon,
   CloseIcon,
   GhostIcon,
+  RecycleBinIcon,
   ScrollToTopIcon,
   UploadingLoader,
 } from "@/lib/svg";
@@ -82,6 +84,7 @@ const GalleryGrid = () => {
   const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(
     null,
   );
+  const [mounted, setMounted] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedIds.size > 0;
@@ -101,7 +104,10 @@ const GalleryGrid = () => {
 
   const PAGE_SIZE = 10;
 
-  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  const scrollToTop = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    behavior: ScrollBehavior = "smooth",
+  ) => window.scrollTo({ top: 0, behavior });
 
   const toggleSelection = (id: string) => {
     setSelectedIds((prev) => {
@@ -127,40 +133,42 @@ const GalleryGrid = () => {
   };
 
   const handleDeleteSelected = () => {
-    const deleteItems = async () => {
+    const moveItemsToBin = async () => {
       closeConfirmationModal();
       try {
-        const endpoint = `${CONSTANTS.SERVER_URL}/media/delete`;
-        const res = await axios.delete(endpoint, {
-          data: Array.from(selectedIds),
-          withCredentials: true,
-        });
+        const endpoint = `${CONSTANTS.SERVER_URL}/bin/`;
+        const res = await axios.post(
+          endpoint,
+          { media_ids: Array.from(selectedIds) },
+          {
+            withCredentials: true,
+          },
+        );
 
         if (res.data.status === "success") {
-          const deletedIdsFromServer = new Set(res.data.deleted);
+          const binnedIds = new Set(res.data.binned);
           setGroupedMediaItems((prev) =>
             prev
               .map(({ label, items }) => ({
                 label,
-                items: items.filter(
-                  (item) => !deletedIdsFromServer.has(item.media_id),
-                ),
+                items: items.filter((item) => !binnedIds.has(item.media_id)),
               }))
               .filter(({ items }) => items.length > 0),
           );
           setSelectedIds(new Set());
         }
       } catch (err: any) {
-        alert(err.response?.data?.detail || "Deletion failed");
+        console.error("Failed to move items to bin:", err);
+        alert(err.response?.data?.detail || "Failed to move items to bin");
       }
     };
 
     const count = selectedIds.size;
     setConfirmationModalState({
-      title: `Are you sure you want to delete ${count} items?`,
-      confirmText: "Delete",
+      title: `Are you sure you want to move ${count} item(s) to bin?`,
+      confirmText: "Move",
       cancelText: "Cancel",
-      onConfirm: deleteItems,
+      onConfirm: moveItemsToBin,
       onCancel: closeConfirmationModal,
     });
   };
@@ -248,6 +256,8 @@ const GalleryGrid = () => {
 
   useEffect(() => {
     fetchMedia(1, true);
+    setMounted(true);
+    scrollToTop(null as any, "instant");
   }, []);
 
   useEffect(() => {
@@ -315,27 +325,30 @@ const GalleryGrid = () => {
       <ConfirmationModal state={confirmationModalState} />
 
       {/* --- SELECTION OVERLAY --- */}
-      {isSelectionMode && (
-        <div className="fixed top-0 left-0 w-full z-50 bg-black text-white p-3 md:p-4 shadow-2xl flex justify-between items-center animate-in slide-in-from-top duration-300">
-          <div className="flex items-center gap-3 md:gap-4">
+      {isSelectionMode &&
+        mounted &&
+        createPortal(
+          <div className="fixed top-0 left-0 w-full z-50 bg-black text-white p-3 md:p-4 shadow-2xl flex justify-between items-center animate-in slide-in-from-top duration-300">
+            <div className="flex items-center gap-3 md:gap-4">
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+              >
+                <CloseIcon />
+              </button>
+              <span className="font-bold text-base md:text-lg">
+                {selectedIds.size} selected
+              </span>
+            </div>
             <button
-              onClick={() => setSelectedIds(new Set())}
-              className="p-2 hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+              onClick={handleDeleteSelected}
+              className="bg-red-500 hover:bg-red-400 px-4 md:px-6 py-2 rounded-xl font-bold transition-all active:scale-95 shadow-lg cursor-pointer text-sm md:text-base"
             >
-              <CloseIcon />
+              Move to Bin
             </button>
-            <span className="font-bold text-base md:text-lg">
-              {selectedIds.size} selected
-            </span>
-          </div>
-          <button
-            onClick={handleDeleteSelected}
-            className="bg-red-500 hover:bg-red-400 px-4 md:px-6 py-2 rounded-xl font-bold transition-all active:scale-95 shadow-lg cursor-pointer text-sm md:text-base"
-          >
-            Delete <span className="hidden sm:inline">Items</span>
-          </button>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
 
       {/* --- HEADER --- */}
       <header className="sticky top-0 w-full z-40 bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-900 px-3 py-3 md:px-4 md:py-4">
@@ -522,31 +535,38 @@ const GalleryGrid = () => {
       </main>
 
       {/* --- VIEW CONTROLS --- */}
-      {groupedMediaItems.length > 0 && (
-        <div className="fixed bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex bg-neutral-900/80 backdrop-blur-md border border-neutral-700 p-1 md:p-1.5 rounded-full shadow-2xl scale-90 md:scale-100 origin-bottom">
-          {["Comfort", "Compact", "Dense"].map((size) => (
-            <button
-              key={size}
-              onClick={() => setGridCols(size as any)}
-              className={`px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-bold rounded-full transition-all cursor-pointer ${
-                gridCols === size
-                  ? "bg-neutral-700 text-white"
-                  : "text-neutral-400 hover:text-neutral-200"
-              }`}
-            >
-              {size}
-            </button>
-          ))}
-        </div>
-      )}
+      {groupedMediaItems.length > 0 &&
+        mounted &&
+        createPortal(
+          <div className="fixed bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex bg-neutral-900/80 backdrop-blur-md border border-neutral-700 p-1 md:p-1.5 rounded-full shadow-2xl scale-90 md:scale-100 origin-bottom">
+            {["Comfort", "Compact", "Dense"].map((size) => (
+              <button
+                key={size}
+                onClick={() => setGridCols(size as any)}
+                className={`px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-bold rounded-full transition-all cursor-pointer ${
+                  gridCols === size
+                    ? "bg-neutral-700 text-white"
+                    : "text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                {size}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
 
       {/* SCROLL TO TOP BUTTON */}
-      <button
-        onClick={scrollToTop}
-        className={`fixed bottom-20 md:bottom-6 right-4 md:right-6 p-3 md:p-4 bg-gray-800 hover:bg-blue-500 text-white rounded-full shadow-2xl transition-all duration-300 z-50 cursor-pointer ${showScrollTop ? "translate-y-0 opacity-100" : "translate-y-20 opacity-0"}`}
-      >
-        <ScrollToTopIcon />
-      </button>
+      {mounted &&
+        createPortal(
+          <button
+            onClick={(e) => scrollToTop(e, "smooth")}
+            className={`fixed bottom-20 md:bottom-6 right-4 md:right-6 p-3 md:p-4 bg-gray-800 hover:bg-blue-500 text-white rounded-full shadow-2xl transition-all duration-300 z-50 cursor-pointer ${showScrollTop ? "translate-y-0 opacity-100" : "translate-y-20 opacity-0"}`}
+          >
+            <ScrollToTopIcon />
+          </button>,
+          document.body,
+        )}
 
       {/* --- MEDIA VIEW MODAL --- */}
       <ViewMediaModal

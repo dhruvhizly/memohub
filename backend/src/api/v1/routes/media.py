@@ -240,7 +240,7 @@ def list_media(
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     try:
-        query = db.query(Media).filter(Media.owner_id == user_id)
+        query = db.query(Media).filter(Media.owner_id == user_id, Media.in_bin == False)
         total = query.count()
         if total == 0:
             return {

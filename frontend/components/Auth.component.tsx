@@ -61,7 +61,7 @@ const Auth = ({ setUserId, setUsername }: AuthProps) => {
   };
 
   return (
-    <div className="flex flex-1 flex-col justify-center items-center">
+    <div className="flex min-h-screen flex-col justify-center items-center">
       <div className="w-full flex items-center justify-center p-4">
         <form
           onSubmit={handleAuth}
