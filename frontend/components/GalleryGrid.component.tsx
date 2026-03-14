@@ -461,6 +461,18 @@ const GalleryGrid = () => {
                   );
                 }
 
+                const sumOfAspects = row.items.reduce((sum, item) => {
+                  const w = Number((item as any).width);
+                  const h = Number((item as any).height);
+                  const aspect = w > 0 && h > 0 ? w / h : 1;
+                  return sum + aspect;
+                }, 0);
+
+                const nextRow = gridRows[virtualRow.index + 1];
+                const isLastOfGroup = !nextRow || nextRow.type === "header";
+                const isLastOfAll = !hasMore && virtualRow.index === gridRows.length - 1;
+                const isShortLastRow = (isLastOfGroup || isLastOfAll) && sumOfAspects < columnCount;
+
                 return (
                   <div
                     key={virtualRow.key}
@@ -483,6 +495,8 @@ const GalleryGrid = () => {
                       const h = Number((item as any).height);
                       const aspect = w > 0 && h > 0 ? w / h : 1;
 
+                      const style = isShortLastRow ? {} : { flexGrow: aspect, flexShrink: 1, flexBasis: "0%" };
+
                       return (
                         <div
                           key={item.media_id}
@@ -497,7 +511,7 @@ const GalleryGrid = () => {
                               toggleSelection(item.media_id);
                             }
                           }}
-                            style={{ flexGrow: aspect, flexShrink: 1, flexBasis: "0%" }}
+                            style={style}
                             className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group ${isItemSelected ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]" : "border-neutral-800 hover:border-neutral-600"}`}
                         >
                           <div
