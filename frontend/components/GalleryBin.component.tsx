@@ -82,14 +82,53 @@ const GalleryBin = () => {
   });
   const PAGE_SIZE = 10;
 
-  const toggleSelection = (id: string) => {
+  const toggleSelection = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
+
+  const openModal = useCallback(
+    (id: string) => {
+      const index = mediaItems.findIndex((m) => m.media_id === id);
+      setSelectedMediaIndex(index);
+    },
+    [mediaItems],
+  );
+
+  const handleItemClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const id = event.currentTarget.dataset.id;
+      if (!id) return;
+      isSelectionMode ? toggleSelection(id) : openModal(id);
+    },
+    [isSelectionMode, toggleSelection, openModal],
+  );
+
+  const handleItemContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!isSelectionMode) {
+        event.preventDefault();
+        const id = event.currentTarget.dataset.id;
+        if (!id) return;
+        toggleSelection(id);
+      }
+    },
+    [isSelectionMode, toggleSelection],
+  );
+
+  const handleCheckboxClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.stopPropagation();
+      const id = event.currentTarget.dataset.id;
+      if (!id) return;
+      toggleSelection(id);
+    },
+    [toggleSelection],
+  );
 
   const areAllSelected =
     mediaItems.length > 0 &&
@@ -155,11 +194,6 @@ const GalleryBin = () => {
       onConfirm: deleteItems,
       onCancel: closeConfirmationModal,
     });
-  };
-
-  const openModal = (id: string) => {
-    const index = mediaItems.findIndex((m) => m.media_id === id);
-    setSelectedMediaIndex(index);
   };
 
   const closeConfirmationModal = () =>
@@ -375,6 +409,7 @@ const GalleryBin = () => {
                         width: "100%",
                         transform: `translateY(${virtualRow.start}px)`,
                         display: "flex",
+                        willChange: "transform",
                         gap: "16px",
                         paddingBottom: "16px",
                       }}
@@ -390,19 +425,11 @@ const GalleryBin = () => {
                         return (
                           <div
                             key={item.media_id}
-                            onClick={() =>
-                              isSelectionMode
-                                ? toggleSelection(item.media_id)
-                                : openModal(item.media_id)
-                            }
-                            onContextMenu={(e) => {
-                              if (!isSelectionMode) {
-                                e.preventDefault();
-                                toggleSelection(item.media_id);
-                              }
-                            }}
+                            data-id={item.media_id}
+                            onClick={handleItemClick}
+                            onContextMenu={handleItemContextMenu}
                             style={style}
-                            className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group ${
+                            className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} overflow-hidden rounded-xl bg-neutral-900 border transition-[transform,box-shadow,border-color] duration-200 cursor-pointer group ${
                               isItemSelected
                                 ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]"
                                 : "border-neutral-800 hover:border-neutral-600"
@@ -410,10 +437,8 @@ const GalleryBin = () => {
                           >
                             <div
                               className={`absolute top-2 left-2 z-30 transition-opacity ${isItemSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 hidden md:block"}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSelection(item.media_id);
-                              }}
+                              data-id={item.media_id}
+                              onClick={handleCheckboxClick}
                             >
                               <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isItemSelected ? "bg-blue-500 border-blue-500" : "bg-black/40 border-white/50 backdrop-blur-md"}`}>
                                 {isItemSelected && <CheckBoxTickIcon />}

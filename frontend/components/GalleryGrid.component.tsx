@@ -114,16 +114,16 @@ const GalleryGrid = () => {
   });
   const PAGE_SIZE = 10;
 
-  const toggleSelection = (id: string) => {
+  const toggleSelection = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  const toggleGroupSelection = (items: MediaItem[]) => {
+  const toggleGroupSelection = useCallback((items: MediaItem[]) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       const allSelected = items.every((item) => next.has(item.media_id));
@@ -135,7 +135,46 @@ const GalleryGrid = () => {
       }
       return next;
     });
-  };
+  }, []);
+
+  const openModal = useCallback(
+    (id: string) => {
+      const index = flatMediaItems.findIndex((m) => m.media_id === id);
+      setSelectedMediaIndex(index);
+    },
+    [flatMediaItems],
+  );
+
+  const handleItemClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const id = event.currentTarget.dataset.id;
+      if (!id) return;
+      isSelectionMode ? toggleSelection(id) : openModal(id);
+    },
+    [isSelectionMode, toggleSelection, openModal],
+  );
+
+  const handleItemContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!isSelectionMode) {
+        event.preventDefault();
+        const id = event.currentTarget.dataset.id;
+        if (!id) return;
+        toggleSelection(id);
+      }
+    },
+    [isSelectionMode, toggleSelection],
+  );
+
+  const handleCheckboxClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.stopPropagation();
+      const id = event.currentTarget.dataset.id;
+      if (!id) return;
+      toggleSelection(id);
+    },
+    [toggleSelection],
+  );
 
   const handleDeleteSelected = () => {
     const moveItemsToBin = async () => {
@@ -176,11 +215,6 @@ const GalleryGrid = () => {
       onConfirm: moveItemsToBin,
       onCancel: closeConfirmationModal,
     });
-  };
-
-  const openModal = (id: string) => {
-    const index = flatMediaItems.findIndex((m) => m.media_id === id);
-    setSelectedMediaIndex(index);
   };
 
   const closeConfirmationModal = () =>
@@ -433,6 +467,7 @@ const GalleryGrid = () => {
                         left: 0,
                         width: "100%",
                         height: "64px",
+                        willChange: "transform",
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
@@ -481,6 +516,7 @@ const GalleryGrid = () => {
                       display: "flex",
                       gap: "16px",
                       paddingBottom: "16px",
+                      willChange: "transform",
                     }}
                   >
                     {row.items.map((item) => {
@@ -494,26 +530,16 @@ const GalleryGrid = () => {
                       return (
                         <div
                           key={item.media_id}
-                          onClick={() =>
-                            isSelectionMode
-                              ? toggleSelection(item.media_id)
-                              : openModal(item.media_id)
-                          }
-                          onContextMenu={(e) => {
-                            if (!isSelectionMode) {
-                              e.preventDefault();
-                              toggleSelection(item.media_id);
-                            }
-                          }}
-                            style={style}
-                            className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group ${isItemSelected ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]" : "border-neutral-800 hover:border-neutral-600"}`}
+                          data-id={item.media_id}
+                          onClick={handleItemClick}
+                          onContextMenu={handleItemContextMenu}
+                          style={style}
+                          className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} overflow-hidden rounded-xl bg-neutral-900 border transition-[transform,box-shadow,border-color] duration-200 cursor-pointer group ${isItemSelected ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]" : "border-neutral-800 hover:border-neutral-600"}`}
                         >
                           <div
                             className={`absolute top-2 left-2 z-30 transition-opacity ${isItemSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 hidden md:block"}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSelection(item.media_id);
-                            }}
+                            data-id={item.media_id}
+                            onClick={handleCheckboxClick}
                           >
                             <div
                               className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isItemSelected ? "bg-blue-500 border-blue-500" : "bg-black/40 border-white/50 backdrop-blur-md"}`}
