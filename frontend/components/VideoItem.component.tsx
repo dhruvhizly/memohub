@@ -20,11 +20,11 @@ export const VideoItem = ({ item }: VideoItemProps) => {
   }, [thumbnailUrl]);
 
   return (
-    <div className="w-full relative">
+    <div className="w-full h-full relative">
       <video
         src={videoUrl}
         poster={posterReady ? thumbnailUrl : undefined}
-        className="w-full h-auto opacity-80"
+        className="w-full h-full object-cover opacity-80"
         preload={posterReady ? "metadata" : "auto"}
         muted
       />

@@ -7,6 +7,8 @@ from src.core.config import AES_KEY, FFMPEG_PATH
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
+Image.MAX_IMAGE_PIXELS = 100_000_000
+
 ALLOWED_MIME_TYPES = [
     "image/jpeg", 
     "image/png", 
@@ -98,9 +100,9 @@ def process_single_file(file: UploadFile, user_dir: str, user_id: str, chunk_siz
 
         # Thumbnail — reuse already-open img, avoid re-reading disk
         thumb_img = img.copy()
-        thumb_img.thumbnail((300, 300))
+        thumb_img.thumbnail((300, 300), Image.Resampling.LANCZOS)
         thumb_buffer = BytesIO()
-        thumb_img.save(thumb_buffer, format=fmt)
+        thumb_img.save(thumb_buffer, format=fmt, optimize=True)
         thumb_content = thumb_buffer.getvalue()
 
     elif mime_type.startswith("video/"):

@@ -6,16 +6,16 @@ import { createPortal } from "react-dom";
 
 export type GridMode = "Comfort" | "Compact" | "Dense";
 
-export const BREAKPOINT_MAPPING = {
-  Comfort: { default: 6, 1536: 5, 1280: 4, 1024: 3, 768: 2, 500: 1 },
-  Compact: { default: 8, 1536: 6, 1280: 5, 1024: 4, 768: 3, 500: 2 },
-  Dense: { default: 10, 1536: 8, 1280: 6, 1024: 5, 768: 4, 500: 3 },
+export const GRID_MODE_STYLES: Record<GridMode, { itemClass: string; estimateHeight: number }> = {
+  Comfort: { itemClass: "h-60", estimateHeight: 240 + 16 }, // 240px
+  Compact: { itemClass: "h-50", estimateHeight: 200 + 16 }, // 200px
+  Dense:   { itemClass: "h-40", estimateHeight: 160 + 16 }, // 160px
 };
 
-export const GRID_SIZES_PROP = {
-  Comfort: "(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 20vw",
-  Compact: "(max-width: 768px) 33vw, (max-width: 1024px) 25vw, 16vw",
-  Dense: "(max-width: 768px) 25vw, (max-width: 1024px) 20vw, 12vw",
+export const BREAKPOINT_MAPPING = {
+  Comfort: { default: 1, 500: 1, 768: 2, 1024: 3, 1280: 4, 1536: 5, 1920: 7 },
+  Compact: { default: 1, 500: 2, 768: 3, 1024: 4, 1280: 5, 1536: 7, 1920: 8, 2200: 10 },
+  Dense:   { default: 1, 500: 2, 768: 4, 1024: 5, 1280: 7, 1536: 8, 1920: 10 },
 };
 
 const SkeletonItem = ({ height }: { height: number }) => (
@@ -28,15 +28,15 @@ const SkeletonItem = ({ height }: { height: number }) => (
 );
 
 export const GallerySkeleton = ({ mode }: { mode: GridMode }) => {
-  const colCount = Math.min(4, BREAKPOINT_MAPPING[mode].default);
+  const colCount = BREAKPOINT_MAPPING[mode][1024];
   const itemsPerCol = 2;
 
   return (
-    <div className="flex w-full gap-4">
+    <div className="flex w-full" style={{ gap: "16px" }}>
       {Array.from({ length: colCount }).map((_, colIndex) => (
-        <div key={colIndex} className="flex flex-col gap-4 w-full">
+        <div key={colIndex} className="flex flex-col w-full" style={{ gap: "16px" }}>
           {Array.from({ length: itemsPerCol }).map((_, itemIndex) => {
-            const height = 180 + itemIndex * 80;
+            const height = 180 + Math.random() * 150;
             return <SkeletonItem key={itemIndex} height={height} />;
           })}
         </div>
@@ -45,51 +45,32 @@ export const GallerySkeleton = ({ mode }: { mode: GridMode }) => {
   );
 };
 
-export const MasonryStyles = () => (
-  <style jsx global>{`
-    @keyframes shimmer {
-      0% {
-        transform: translateX(-100%);
-      }
-      100% {
-        transform: translateX(100%);
-      }
-    }
-    .animate-shimmer {
-      animation: shimmer 2s infinite;
-    }
-    .my-masonry-grid {
-      display: flex;
-      margin-left: -16px;
-      width: auto;
-    }
-    .my-masonry-grid_column {
-      padding-left: 16px;
-      background-clip: padding-box;
-    }
-    @media (max-width: 640px) {
-      .my-masonry-grid {
-        margin-left: -8px;
-      }
-      .my-masonry-grid_column {
-        padding-left: 8px;
-      }
-    }
-  `}</style>
-);
-
-export const ScrollToTopButton = () => {
+export const ScrollToTopButton = ({
+  scrollRef,
+}: {
+  scrollRef?: RefObject<HTMLDivElement | null>;
+}) => {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    const handleScroll = () => setShowScrollTop(window.scrollY > 400);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+    const scrollElement = scrollRef?.current ?? window;
+    const handleScroll = () => {
+      const scrollTop = scrollRef?.current
+        ? scrollRef.current.scrollTop
+        : window.scrollY;
+      setShowScrollTop(scrollTop > 400);
+    };
+    scrollElement.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => scrollElement.removeEventListener("scroll", handleScroll);
+  }, [scrollRef]);
 
-  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  const scrollToTop = () => {
+    const target = scrollRef?.current ?? window;
+    target.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   if (!mounted) return null;
 
@@ -138,17 +119,8 @@ export const GridControls = ({
   );
 };
 
-export const LoadMoreSpinner = ({
-  targetRef,
-  isLoading,
-}: {
-  targetRef: RefObject<HTMLDivElement | null>;
-  isLoading: boolean;
-}) => (
-  <div
-    ref={targetRef}
-    className="h-20 w-full flex items-center justify-center mt-10"
-  >
+export const LoadMoreSpinner = ({ isLoading }: { isLoading: boolean }) => (
+  <div className="h-20 w-full flex items-center justify-center mt-10">
     {isLoading && (
       <div className="w-6 h-6 border-2 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
     )}

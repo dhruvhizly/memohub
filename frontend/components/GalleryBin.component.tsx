@@ -1,10 +1,10 @@
 "use client";
 import axios from "axios";
 import Link from "next/link";
-import Masonry from "react-masonry-css";
 import { createPortal } from "react-dom";
 import { CONSTANTS } from "@/lib/constants";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { CheckBoxTickIcon, ChevronLeft, CloseIcon, GhostIcon } from "@/lib/svg";
 import { ConfirmationModalState } from "@/interfaces/common_interfaces";
 import { ViewMediaModal } from "@/components/ViewMediaModal.component";
@@ -14,22 +14,21 @@ import { ConfirmationModal } from "@/components/ConfirmationModal.component";
 import { UserModal } from "@/components/UserModal.component";
 import {
   BREAKPOINT_MAPPING,
+  GRID_MODE_STYLES,
   GallerySkeleton,
   GridControls,
   GridMode,
-  GRID_SIZES_PROP,
   LoadMoreSpinner,
-  MasonryStyles,
   ScrollToTopButton,
 } from "@/components/GalleryCommon.component";
 import { MediaItem } from "@/interfaces/media_response";
+import { useColumnCount } from "@/hooks/useColumnCount.hook";
 
 // --- MAIN COMPONENT ---
 const GalleryBin = () => {
   const [mediaItems, setMediaItems] = useState<Array<MediaItem>>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  const observerTarget = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [gridCols, setGridCols] = useState<GridMode>("Compact");
   const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(
@@ -48,6 +47,29 @@ const GalleryBin = () => {
       onCancel: () => {},
     });
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
+  const columnCount = useColumnCount(gridCols);
+
+  const rows = useMemo(() => {
+    const rows = [];
+    for (let i = 0; i < mediaItems.length; i += columnCount) {
+      rows.push(mediaItems.slice(i, i + columnCount));
+    }
+    return rows;
+  }, [mediaItems, columnCount]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: hasMore ? rows.length + 1 : rows.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: useCallback(() => GRID_MODE_STYLES[gridCols].estimateHeight, [gridCols]),
+    overscan: 3,
+    measureElement:
+      typeof window !== "undefined" &&
+      navigator.userAgent.indexOf("Firefox") === -1
+        ? (element) => element.getBoundingClientRect().height
+        : undefined,
+  });
   const PAGE_SIZE = 10;
 
   const toggleSelection = (id: string) => {
@@ -181,17 +203,15 @@ const GalleryBin = () => {
   }, []);
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !isLoading) {
-          fetchBinMedia(page + 1);
-        }
-      },
-      { threshold: 0.1, rootMargin: "2000px" },
-    );
-    if (observerTarget.current) observer.observe(observerTarget.current);
-    return () => observer.disconnect();
-  }, [hasMore, isLoading, fetchBinMedia]);
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    if (virtualItems.length === 0) return;
+    const lastItem = virtualItems[virtualItems.length - 1];
+    if (!lastItem) return;
+
+    if (lastItem.index >= rows.length - 1 && hasMore && !isLoading) {
+      fetchBinMedia(page + 1);
+    }
+  }, [rowVirtualizer.getVirtualItems(), rows.length, hasMore, isLoading, fetchBinMedia, page]);
 
   useEffect(() => {
     document.body.style.overflow =
@@ -202,9 +222,7 @@ const GalleryBin = () => {
   }, [selectedMediaIndex]);
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center bg-neutral-950 text-neutral-200 relative">
-      <MasonryStyles />
-
+    <div className="h-screen w-full flex flex-col items-center bg-neutral-950 text-neutral-200 relative">
       {/* --- CONFIRMATION MODAL --- */}
       <ConfirmationModal state={confirmationModalState} />
 
@@ -270,7 +288,10 @@ const GalleryBin = () => {
       </header>
 
       {/* --- MAIN CONTENT --- */}
-      <main className="w-full h-full px-2 md:px-4 pt-4 md:pt-8 pb-32">
+      <main
+        ref={scrollContainerRef}
+        className="w-full flex-1 overflow-y-auto px-2 md:px-4 pt-4 md:pt-8 pb-32"
+      >
         <div className="w-full space-y-5">
           {/* 1. LOADING STATE */}
           {isLoading && mediaItems.length === 0 ? (
@@ -288,7 +309,7 @@ const GalleryBin = () => {
                 The bin is empty
               </h2>
               <p className="mt-2 text-sm text-gray-500">
-                Items moved to the bin will appear here.
+                Items moved to the bin will appear here for 30 days.
               </p>
             </div>
           ) : (
@@ -312,69 +333,95 @@ const GalleryBin = () => {
                   Select All
                 </span>
               </div>
-              <Masonry
-                breakpointCols={BREAKPOINT_MAPPING[gridCols]}
-                className="my-masonry-grid"
-                columnClassName="my-masonry-grid_column"
+              <div
+                ref={parentRef}
+                style={{
+                  width: "100%",
+                  height: rowVirtualizer.getTotalSize(),
+                  position: "relative",
+                }}
               >
-                {mediaItems.map((item, index) => {
-                  const isItemSelected = selectedIds.has(item.media_id);
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const rowItems = rows[virtualRow.index];
+                  if (!rowItems) return null;
+                  const isLastRow = !hasMore && virtualRow.index === rows.length - 1;
+                  const placeholders = isLastRow
+                    ? Array.from({
+                        length: Math.max(0, columnCount - rowItems.length),
+                      })
+                    : [];
+
                   return (
                     <div
-                      key={item.media_id}
-                      onClick={() =>
-                        isSelectionMode
-                          ? toggleSelection(item.media_id)
-                          : openModal(item.media_id)
-                      }
-                      onContextMenu={(e) => {
-                        if (!isSelectionMode) {
-                          e.preventDefault();
-                          toggleSelection(item.media_id);
-                        }
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                        display: "flex",
+                        gap: "16px",
+                        paddingBottom: "16px",
                       }}
-                      className={`relative w-full overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group mb-4 ${
-                        isItemSelected
-                          ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]"
-                          : "border-neutral-800 hover:border-neutral-600"
-                      }`}
                     >
-                      <div
-                        className={`absolute top-2 left-2 z-30 transition-opacity ${
-                          isItemSelected
-                            ? "opacity-100"
-                            : "opacity-0 group-hover:opacity-100 hidden md:block"
-                        }`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleSelection(item.media_id);
-                        }}
-                      >
-                        <div
-                          className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isItemSelected ? "bg-blue-500 border-blue-500" : "bg-black/40 border-white/50 backdrop-blur-md"}`}
-                        >
-                          {isItemSelected && <CheckBoxTickIcon />}
-                        </div>
-                      </div>
+                      {rowItems.map((item) => {
+                        const isItemSelected = selectedIds.has(item.media_id);
+                        return (
+                          <div
+                            key={item.media_id}
+                            onClick={() =>
+                              isSelectionMode
+                                ? toggleSelection(item.media_id)
+                                : openModal(item.media_id)
+                            }
+                            onContextMenu={(e) => {
+                              if (!isSelectionMode) {
+                                e.preventDefault();
+                                toggleSelection(item.media_id);
+                              }
+                            }}
+                            className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} flex-1 overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group ${
+                              isItemSelected
+                                ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]"
+                                : "border-neutral-800 hover:border-neutral-600"
+                            }`}
+                          >
+                            <div
+                              className={`absolute top-2 left-2 z-30 transition-opacity ${isItemSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 hidden md:block"}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSelection(item.media_id);
+                              }}
+                            >
+                              <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isItemSelected ? "bg-blue-500 border-blue-500" : "bg-black/40 border-white/50 backdrop-blur-md"}`}>
+                                {isItemSelected && <CheckBoxTickIcon />}
+                              </div>
+                            </div>
 
-                      {item.type.startsWith("image/") ? (
-                        <ImageItem
-                          item={item}
-                          priority={index < 12}
-                        />
-                      ) : (
-                        <VideoItem item={item} />
-                      )}
+                            {item.type.startsWith("image/") ? (
+                              <ImageItem item={item} priority={virtualRow.index < 2} />
+                            ) : (
+                              <VideoItem item={item} />
+                            )}
+                          </div>
+                        );
+                      })}
+                      {placeholders.map((_, i) => (
+                        <div key={`placeholder-${i}`} className="flex-1" />
+                      ))}
                     </div>
                   );
                 })}
-              </Masonry>
+              </div>
             </>
           )}
         </div>
 
         {/* Load More Spinner */}
-        <LoadMoreSpinner targetRef={observerTarget} isLoading={isLoading} />
+        <LoadMoreSpinner isLoading={isLoading && hasMore} />
       </main>
 
       {/* --- VIEW CONTROLS --- */}
@@ -383,7 +430,7 @@ const GalleryBin = () => {
       )}
 
       {/* SCROLL TO TOP BUTTON */}
-      <ScrollToTopButton />
+      <ScrollToTopButton scrollRef={scrollContainerRef} />
 
       {/* --- MEDIA VIEW MODAL --- */}
       <ViewMediaModal

@@ -1,9 +1,9 @@
 "use client";
 import axios from "axios";
-import Masonry from "react-masonry-css";
 import { createPortal } from "react-dom";
 import { CONSTANTS } from "@/lib/constants";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   CheckBoxTickIcon,
   CloseIcon,
@@ -18,12 +18,11 @@ import { ImageItem } from "@/components/ImageItem.component";
 import { ConfirmationModal } from "@/components/ConfirmationModal.component";
 import { UserModal } from "@/components/UserModal.component";
 import {
-  BREAKPOINT_MAPPING,
+  GRID_MODE_STYLES,
   GallerySkeleton,
   GridControls,
   GridMode,
   LoadMoreSpinner,
-  MasonryStyles,
   ScrollToTopButton,
 } from "@/components/GalleryCommon.component";
 import {
@@ -31,6 +30,7 @@ import {
   GroupedMediaResponse,
   MediaItem,
 } from "@/interfaces/media_response";
+import { useColumnCount } from "@/hooks/useColumnCount.hook";
 
 // --- MAIN COMPONENT ---
 const GalleryGrid = () => {
@@ -49,7 +49,6 @@ const GalleryGrid = () => {
   const [mounted, setMounted] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const isSelectionMode = selectedIds.size > 0;
-  const observerTarget = useRef<HTMLDivElement>(null);
   const flatMediaItems = useMemo(
     () => groupedMediaItems.flatMap(({ label, items }) => items),
     [groupedMediaItems],
@@ -63,6 +62,46 @@ const GalleryGrid = () => {
       onCancel: () => {},
     });
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
+  const columnCount = useColumnCount(gridCols);
+
+  const gridRows = useMemo(() => {
+    const rows: (
+      | { type: "header"; label: string; items: MediaItem[] }
+      | { type: "media"; items: MediaItem[] }
+    )[] = [];
+    groupedMediaItems.forEach((group) => {
+      rows.push({ type: "header", label: group.label, items: group.items });
+      if (group.items.length > 0) {
+        for (let i = 0; i < group.items.length; i += columnCount) {
+          rows.push({
+            type: "media",
+            items: group.items.slice(i, i + columnCount),
+          });
+        }
+      }
+    });
+    return rows;
+  }, [groupedMediaItems, columnCount]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: hasMore ? gridRows.length + 1 : gridRows.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: useCallback(
+      (index) => {
+        if (gridRows[index]?.type === "header") return 48;
+        return GRID_MODE_STYLES[gridCols].estimateHeight;
+      },
+      [gridRows, gridCols],
+    ),
+    overscan: 3,
+    measureElement:
+      typeof window !== "undefined" &&
+      navigator.userAgent.indexOf("Firefox") === -1
+        ? (element) => element.getBoundingClientRect().height
+        : undefined,
+  });
   const PAGE_SIZE = 10;
 
   const toggleSelection = (id: string) => {
@@ -217,17 +256,22 @@ const GalleryGrid = () => {
   }, []);
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !isLoading) {
-          fetchMedia(page + 1);
-        }
-      },
-      { threshold: 0.1, rootMargin: "2000px" },
-    )
-    if (observerTarget.current) observer.observe(observerTarget.current);
-    return () => observer.disconnect();
-  }, [hasMore, isLoading, fetchMedia]);
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    if (virtualItems.length === 0) return;
+    const lastItem = virtualItems[virtualItems.length - 1];
+    if (!lastItem) return;
+
+    if (lastItem.index >= gridRows.length - 1 && hasMore && !isLoading) {
+      fetchMedia(page + 1);
+    }
+  }, [
+    rowVirtualizer.getVirtualItems(),
+    gridRows.length,
+    hasMore,
+    isLoading,
+    fetchMedia,
+    page,
+  ]);
 
   useEffect(() => {
     document.body.style.overflow =
@@ -238,10 +282,7 @@ const GalleryGrid = () => {
   }, [selectedMediaIndex]);
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center bg-neutral-950 text-neutral-200 relative">
-      {/* Global Style overrides for React Masonry CSS to handle gap correctly */}
-      <MasonryStyles />
-
+    <div className="h-screen w-full flex flex-col items-center bg-neutral-950 text-neutral-200 relative">
       {/* --- CONFIRMATION MODAL --- */}
       <ConfirmationModal state={confirmationModalState} />
 
@@ -281,10 +322,7 @@ const GalleryGrid = () => {
             <span>
               <Logo />
             </span>
-            <span>
-              MemoHub
-            </span>
-            
+            <span>MemoHub</span>
           </h1>
           <div className="flex flex-wrap justify-center gap-2 md:gap-3 items-center">
             <label
@@ -329,7 +367,10 @@ const GalleryGrid = () => {
       </header>
 
       {/* --- MAIN CONTENT --- */}
-      <main className="w-full h-full px-2 md:px-4 pt-4 md:pt-8 pb-32">
+      <main
+        ref={scrollContainerRef}
+        className="w-full flex-1 overflow-y-auto px-2 md:px-4 pt-4 md:pt-8 pb-32"
+      >
         <div className="w-full space-y-12">
           {/* 1. LOADING STATE */}
           {isLoading && groupedMediaItems.length === 0 ? (
@@ -351,46 +392,91 @@ const GalleryGrid = () => {
               </p>
             </div>
           ) : (
-            /* 3. MASONRY GRID STATE */
-            groupedMediaItems.map(({ label, items }, groupIndex) => {
-              const allSelected = items.every((i) =>
-                selectedIds.has(i.media_id),
-              );
-              const someSelected = items.some((i) =>
-                selectedIds.has(i.media_id),
-              );
-              const isIndeterminate = someSelected && !allSelected;
+            /* 3. VIRUALIZED GRID STATE */
+            <div
+              ref={parentRef}
+              style={{
+                width: "100%",
+                height: rowVirtualizer.getTotalSize(),
+                position: "relative",
+              }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const row = gridRows[virtualRow.index];
+                if (!row) return null;
 
-              return (
-                <section key={label} className="space-y-4">
-                  <div className="flex items-center gap-3 py-1 border-l-4 border-blue-600 pl-3">
-                    {isSelectionMode && (
-                      <button
-                        onClick={() => toggleGroupSelection(items)}
-                        className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors cursor-pointer ${
-                          allSelected || isIndeterminate
-                            ? "bg-blue-600 border-blue-600"
-                            : "border-neutral-600 hover:border-neutral-400"
-                        }`}
-                      >
-                        {allSelected && <CheckBoxTickIcon />}
-                        {isIndeterminate && (
-                          <div className="w-3 h-0.5 bg-white rounded-full" />
+                if (row.type === "header") {
+                  const allSelected = row.items.every((i) =>
+                    selectedIds.has(i.media_id),
+                  );
+                  const someSelected = row.items.some((i) =>
+                    selectedIds.has(i.media_id),
+                  );
+                  const isIndeterminate = someSelected && !allSelected;
+                  return (
+                    <div
+                      key={row.label}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <div className="flex items-center gap-3 py-1 border-l-4 border-blue-600 pl-3 my-4">
+                        {isSelectionMode && (
+                          <button
+                            onClick={() => toggleGroupSelection(row.items)}
+                            className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors cursor-pointer ${allSelected || isIndeterminate ? "bg-blue-600 border-blue-600" : "border-neutral-600 hover:border-neutral-400"}`}
+                          >
+                            {allSelected && <CheckBoxTickIcon />}
+                            {isIndeterminate && (
+                              <div className="w-3 h-0.5 bg-white rounded-full" />
+                            )}
+                          </button>
                         )}
-                      </button>
-                    )}
-                    <h2 className="text-md font-bold text-neutral-400">
-                      {label}
-                    </h2>
-                  </div>
+                        <h2 className="text-md font-bold text-neutral-400">
+                          {row.label}
+                        </h2>
+                      </div>
+                    </div>
+                  );
+                }
 
-                  {/* --- MASONRY COMPONENT IMPLEMENTATION --- */}
-                  <Masonry
-                    breakpointCols={BREAKPOINT_MAPPING[gridCols]}
-                    className="my-masonry-grid"
-                    columnClassName="my-masonry-grid_column"
+                const nextRow = gridRows[virtualRow.index + 1];
+                const isLastRowOfCompleteGroup = nextRow?.type === "header";
+                const isLastRowOfAllMedia =
+                  !hasMore && virtualRow.index === gridRows.length - 1;
+
+                let placeholders: unknown[] = [];
+                if (
+                  (isLastRowOfCompleteGroup || isLastRowOfAllMedia) &&
+                  row.items.length < columnCount
+                ) {
+                  placeholders = Array.from({
+                    length: Math.max(0, columnCount - row.items.length),
+                  });
+                }
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualRow.start}px)`,
+                      display: "flex",
+                      gap: "16px",
+                      paddingBottom: "16px",
+                    }}
                   >
-                    {items.map((item, index) => {
+                    {row.items.map((item) => {
                       const isItemSelected = selectedIds.has(item.media_id);
                       return (
                         <div
@@ -406,19 +492,10 @@ const GalleryGrid = () => {
                               toggleSelection(item.media_id);
                             }
                           }}
-                          className={`relative w-full overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group mb-4 ${
-                            isItemSelected
-                              ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]"
-                              : "border-neutral-800 hover:border-neutral-600"
-                          }`}
+                          className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} flex-1 overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group ${isItemSelected ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]" : "border-neutral-800 hover:border-neutral-600"}`}
                         >
-                          {/* Checkbox Overlay */}
                           <div
-                            className={`absolute top-2 left-2 z-30 transition-opacity ${
-                              isItemSelected
-                                ? "opacity-100"
-                                : "opacity-0 group-hover:opacity-100 hidden md:block"
-                            }`}
+                            className={`absolute top-2 left-2 z-30 transition-opacity ${isItemSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 hidden md:block"}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleSelection(item.media_id);
@@ -431,11 +508,10 @@ const GalleryGrid = () => {
                             </div>
                           </div>
 
-                          {/* Media Content */}
                           {item.type.startsWith("image/") ? (
                             <ImageItem
                               item={item}
-                              priority={groupIndex === 0 && index < 12}
+                              priority={virtualRow.index < 5}
                             />
                           ) : (
                             <VideoItem item={item} />
@@ -443,15 +519,18 @@ const GalleryGrid = () => {
                         </div>
                       );
                     })}
-                  </Masonry>
-                </section>
-              );
-            })
+                    {placeholders.map((_, i) => (
+                      <div key={`placeholder-${i}`} className="flex-1" />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
         {/* Load More Spinner */}
-        <LoadMoreSpinner targetRef={observerTarget} isLoading={isLoading} />
+        <LoadMoreSpinner isLoading={isLoading && hasMore} />
       </main>
 
       {/* --- VIEW CONTROLS --- */}
@@ -460,7 +539,7 @@ const GalleryGrid = () => {
       )}
 
       {/* SCROLL TO TOP BUTTON */}
-      <ScrollToTopButton />
+      <ScrollToTopButton scrollRef={scrollContainerRef} />
 
       {/* --- MEDIA VIEW MODAL --- */}
       <ViewMediaModal
