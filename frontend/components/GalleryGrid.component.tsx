@@ -105,17 +105,12 @@ const GalleryGrid = () => {
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: useCallback(
       (index) => {
-        if (gridRows[index]?.type === "header") return 48;
+        if (gridRows[index]?.type === "header") return 64;
         return GRID_MODE_STYLES[gridCols].estimateHeight;
       },
       [gridRows, gridCols],
     ),
-    overscan: 3,
-    measureElement:
-      typeof window !== "undefined" &&
-      navigator.userAgent.indexOf("Firefox") === -1
-        ? (element) => element.getBoundingClientRect().height
-        : undefined,
+    overscan: 5,
   });
   const PAGE_SIZE = 10;
 
@@ -432,16 +427,16 @@ const GalleryGrid = () => {
                     <div
                       key={row.label}
                       data-index={virtualRow.index}
-                      ref={rowVirtualizer.measureElement}
                       style={{
                         position: "absolute",
                         top: 0,
                         left: 0,
                         width: "100%",
+                        height: "64px",
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
-                      <div className="flex items-center gap-3 py-1 border-l-4 border-blue-600 pl-3 my-4">
+                      <div className="flex items-center gap-3 py-1 border-l-4 border-blue-600 pl-3 mt-6">
                         {isSelectionMode && (
                           <button
                             onClick={() => toggleGroupSelection(row.items)}
@@ -477,7 +472,6 @@ const GalleryGrid = () => {
                   <div
                     key={virtualRow.key}
                     data-index={virtualRow.index}
-                    ref={rowVirtualizer.measureElement}
                     style={{
                       position: "absolute",
                       top: 0,

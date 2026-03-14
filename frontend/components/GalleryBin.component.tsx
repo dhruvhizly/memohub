@@ -78,12 +78,7 @@ const GalleryBin = () => {
     count: hasMore ? rows.length + 1 : rows.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: useCallback(() => GRID_MODE_STYLES[gridCols].estimateHeight, [gridCols]),
-    overscan: 3,
-    measureElement:
-      typeof window !== "undefined" &&
-      navigator.userAgent.indexOf("Firefox") === -1
-        ? (element) => element.getBoundingClientRect().height
-        : undefined,
+    overscan: 5,
   });
   const PAGE_SIZE = 10;
 
@@ -373,7 +368,6 @@ const GalleryBin = () => {
                     <div
                       key={virtualRow.key}
                       data-index={virtualRow.index}
-                      ref={rowVirtualizer.measureElement}
                       style={{
                         position: "absolute",
                         top: 0,
