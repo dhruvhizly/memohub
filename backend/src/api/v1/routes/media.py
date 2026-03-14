@@ -72,6 +72,8 @@ async def upload_media(
             "filename": m.orig_name,
             "type": m.content_type,
             "size": m.size,
+            "width": m.width,
+            "height": m.height,
             "uploaded_at": m.uploaded_at,
         })
 
@@ -285,7 +287,9 @@ def list_media(
             "filename": m.orig_name,
             "type": m.content_type,
             "uploaded_at": m.uploaded_at,
-            "size": m.size
+            "size": m.size,
+            "width": m.width,
+            "height": m.height
         })
 
     for items in groups.values():

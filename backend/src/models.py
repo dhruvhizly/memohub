@@ -17,6 +17,8 @@ class Media(Base):
     stored_path: Mapped[str] = mapped_column(String(255), nullable=False)
     nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     size: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=True)
+    height: Mapped[int] = mapped_column(Integer, nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

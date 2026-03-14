@@ -127,6 +127,8 @@ def list_bin(
             "filename": m.orig_name,
             "type": m.content_type,
             "size": m.size,
+            "width": m.width,
+            "height": m.height,
             "uploaded_at": m.uploaded_at,
         }
         for m in sorted(medias, key=lambda m: m.binned_at, reverse=True)

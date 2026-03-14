@@ -76,6 +76,8 @@ def process_single_file(file: UploadFile, user_dir: str, user_id: str, chunk_siz
 
     thumb_content = None
     file_size = 0
+    width = None
+    height = None
 
     if mime_type.startswith("image/"):
         img = Image.open(BytesIO(file_content))
@@ -88,6 +90,7 @@ def process_single_file(file: UploadFile, user_dir: str, user_id: str, chunk_siz
         fmt = IMAGE_FORMATS.get(mime_type, "JPEG")
         if fmt == "JPEG":
             img = img.convert("RGB")
+        width, height = img.size
 
         # Write encrypted image directly — no intermediate buffer needed
         buffer = BytesIO()
@@ -113,6 +116,18 @@ def process_single_file(file: UploadFile, user_dir: str, user_id: str, chunk_siz
                 file_size += len(chunk)
             f.write(encryptor.finalize())
 
+        try:
+            result = subprocess.run(
+                [FFMPEG_PATH, "-i", "pipe:0"],
+                input=file_content[:10 * 1024 * 1024],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            match = re.search(r"Video:.*?\s(\d{2,5})x(\d{2,5})\b", result.stderr.decode("utf-8", errors="ignore"))
+            if match:
+                width, height = int(match.group(1)), int(match.group(2))
+        except Exception as e:
+            print(f"Could not extract video dimensions: {e}")
+
     if thumb_content:
         thumb_nonce = secrets.token_bytes(16)
         thumb_cipher = Cipher(
@@ -126,6 +141,8 @@ def process_single_file(file: UploadFile, user_dir: str, user_id: str, chunk_siz
         orig_name=sanitize_filename(file.filename),
         content_type=mime_type,
         stored_path=stored_path,
+        width=width,
+        height=height,
         nonce=nonce,
         size=file_size,
         owner_id=user_id,
@@ -136,6 +153,8 @@ def process_single_file(file: UploadFile, user_dir: str, user_id: str, chunk_siz
         "filename": media.orig_name,
         "type": media.content_type,
         "size": media.size,
+        "width": media.width,
+        "height": media.height,
     }
 
     return media, media_dict, thumb_content, stored_path, mime_type, nonce

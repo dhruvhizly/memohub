@@ -53,8 +53,23 @@ const GalleryBin = () => {
 
   const rows = useMemo(() => {
     const rows = [];
-    for (let i = 0; i < mediaItems.length; i += columnCount) {
-      rows.push(mediaItems.slice(i, i + columnCount));
+    let currentRow: MediaItem[] = [];
+    let currentAspectSum = 0;
+
+    for (let i = 0; i < mediaItems.length; i++) {
+      const item = mediaItems[i];
+      const w = Number((item as any).width);
+      const h = Number((item as any).height);
+      const aspect = w > 0 && h > 0 ? w / h : 1;
+
+      currentRow.push(item);
+      currentAspectSum += aspect;
+
+      if (currentAspectSum >= columnCount || i === mediaItems.length - 1) {
+        rows.push(currentRow);
+        currentRow = [];
+        currentAspectSum = 0;
+      }
     }
     return rows;
   }, [mediaItems, columnCount]);
@@ -344,12 +359,6 @@ const GalleryBin = () => {
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                   const rowItems = rows[virtualRow.index];
                   if (!rowItems) return null;
-                  const isLastRow = !hasMore && virtualRow.index === rows.length - 1;
-                  const placeholders = isLastRow
-                    ? Array.from({
-                        length: Math.max(0, columnCount - rowItems.length),
-                      })
-                    : [];
 
                   return (
                     <div
@@ -369,6 +378,10 @@ const GalleryBin = () => {
                     >
                       {rowItems.map((item) => {
                         const isItemSelected = selectedIds.has(item.media_id);
+                        const w = Number((item as any).width);
+                        const h = Number((item as any).height);
+                        const aspect = w > 0 && h > 0 ? w / h : 1;
+
                         return (
                           <div
                             key={item.media_id}
@@ -383,7 +396,8 @@ const GalleryBin = () => {
                                 toggleSelection(item.media_id);
                               }
                             }}
-                            className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} flex-1 overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group ${
+                            style={{ flexGrow: aspect, flexShrink: 1, flexBasis: "0%" }}
+                            className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group ${
                               isItemSelected
                                 ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]"
                                 : "border-neutral-800 hover:border-neutral-600"
@@ -409,9 +423,6 @@ const GalleryBin = () => {
                           </div>
                         );
                       })}
-                      {placeholders.map((_, i) => (
-                        <div key={`placeholder-${i}`} className="flex-1" />
-                      ))}
                     </div>
                   );
                 })}

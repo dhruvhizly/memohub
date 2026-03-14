@@ -74,11 +74,26 @@ const GalleryGrid = () => {
     groupedMediaItems.forEach((group) => {
       rows.push({ type: "header", label: group.label, items: group.items });
       if (group.items.length > 0) {
-        for (let i = 0; i < group.items.length; i += columnCount) {
-          rows.push({
-            type: "media",
-            items: group.items.slice(i, i + columnCount),
-          });
+        let currentRow: MediaItem[] = [];
+        let currentAspectSum = 0;
+
+        for (let i = 0; i < group.items.length; i++) {
+          const item = group.items[i];
+          const w = Number((item as any).width);
+          const h = Number((item as any).height);
+          const aspect = w > 0 && h > 0 ? w / h : 1;
+
+          currentRow.push(item);
+          currentAspectSum += aspect;
+
+          if (currentAspectSum >= columnCount || i === group.items.length - 1) {
+            rows.push({
+              type: "media",
+              items: currentRow,
+            });
+            currentRow = [];
+            currentAspectSum = 0;
+          }
         }
       }
     });
@@ -446,20 +461,6 @@ const GalleryGrid = () => {
                   );
                 }
 
-                const nextRow = gridRows[virtualRow.index + 1];
-                const isLastRowOfCompleteGroup = nextRow?.type === "header";
-                const isLastRowOfAllMedia =
-                  !hasMore && virtualRow.index === gridRows.length - 1;
-
-                let placeholders: unknown[] = [];
-                if (
-                  (isLastRowOfCompleteGroup || isLastRowOfAllMedia) &&
-                  row.items.length < columnCount
-                ) {
-                  placeholders = Array.from({
-                    length: Math.max(0, columnCount - row.items.length),
-                  });
-                }
                 return (
                   <div
                     key={virtualRow.key}
@@ -478,6 +479,10 @@ const GalleryGrid = () => {
                   >
                     {row.items.map((item) => {
                       const isItemSelected = selectedIds.has(item.media_id);
+                      const w = Number((item as any).width);
+                      const h = Number((item as any).height);
+                      const aspect = w > 0 && h > 0 ? w / h : 1;
+
                       return (
                         <div
                           key={item.media_id}
@@ -492,7 +497,8 @@ const GalleryGrid = () => {
                               toggleSelection(item.media_id);
                             }
                           }}
-                          className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} flex-1 overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group ${isItemSelected ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]" : "border-neutral-800 hover:border-neutral-600"}`}
+                            style={{ flexGrow: aspect, flexShrink: 1, flexBasis: "0%" }}
+                            className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} overflow-hidden rounded-xl bg-neutral-900 border transition-all duration-200 cursor-pointer group ${isItemSelected ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]" : "border-neutral-800 hover:border-neutral-600"}`}
                         >
                           <div
                             className={`absolute top-2 left-2 z-30 transition-opacity ${isItemSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 hidden md:block"}`}
@@ -519,9 +525,6 @@ const GalleryGrid = () => {
                         </div>
                       );
                     })}
-                    {placeholders.map((_, i) => (
-                      <div key={`placeholder-${i}`} className="flex-1" />
-                    ))}
                   </div>
                 );
               })}
