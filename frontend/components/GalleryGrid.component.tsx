@@ -413,7 +413,7 @@ const GalleryGrid = () => {
       {/* --- MAIN CONTENT --- */}
       <main
         ref={scrollContainerRef}
-        className="w-full flex-1 overflow-y-auto px-2 md:px-4 pt-4 md:pt-8 pb-32"
+        className="w-full flex-1 overflow-y-auto px-2 md:px-4 pt-4 md:pt-8 pb-32 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-neutral-800 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-neutral-700"
       >
         <div className="w-full space-y-12">
           {/* 1. LOADING STATE */}
@@ -500,8 +500,10 @@ const GalleryGrid = () => {
 
                 const nextRow = gridRows[virtualRow.index + 1];
                 const isLastOfGroup = !nextRow || nextRow.type === "header";
-                const isLastOfAll = !hasMore && virtualRow.index === gridRows.length - 1;
-                const isShortLastRow = (isLastOfGroup || isLastOfAll) && sumOfAspects < columnCount;
+                const isLastOfAll =
+                  !hasMore && virtualRow.index === gridRows.length - 1;
+                const isShortLastRow =
+                  (isLastOfGroup || isLastOfAll) && sumOfAspects < columnCount;
 
                 return (
                   <div
@@ -525,7 +527,9 @@ const GalleryGrid = () => {
                       const h = Number((item as any).height);
                       const aspect = w > 0 && h > 0 ? w / h : 1;
 
-                      const style = isShortLastRow ? {} : { flexGrow: aspect, flexShrink: 1, flexBasis: "0%" };
+                      const style = isShortLastRow
+                        ? {}
+                        : { flexGrow: aspect, flexShrink: 1, flexBasis: "0%" };
 
                       return (
                         <div

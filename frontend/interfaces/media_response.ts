@@ -2,7 +2,7 @@ export interface GroupedMediaResponse {
   total: number;
   page: number;
   page_size: number;
-  groups: Array<GroupedMediaItem>
+  groups: Array<GroupedMediaItem>;
 }
 
 export interface GroupedMediaItem {
@@ -16,4 +16,6 @@ export interface MediaItem {
   type: string;
   uploaded_at: string;
   size: string;
+  width: string;
+  height: string;
 }

@@ -46,6 +46,7 @@ export const ViewMediaModal = ({
   const startPan = useRef({ x: 0, y: 0 });
   const initialPinch = useRef<{ dist: number; scale: number } | null>(null);
   const lastTapTime = useRef<number>(0);
+  const [fullImageLoaded, setFullImageLoaded] = useState(false);
 
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -93,7 +94,21 @@ export const ViewMediaModal = ({
 
   useEffect(() => {
     setTransform({ scale: 1, x: 0, y: 0 });
-  }, [selectedMediaIndex]);
+    setFullImageLoaded(false);
+
+    let isCurrent = true;
+    if (selectedMediaIndex !== null) {
+      const media = mediaItems[selectedMediaIndex];
+      if (media?.type.startsWith("image/")) {
+        const img = new Image();
+        img.src = `${CONSTANTS.SERVER_URL}/media/view/${media.media_id}`;
+        img.onload = () => {
+          if (isCurrent) setFullImageLoaded(true);
+        };
+      }
+    }
+    return () => { isCurrent = false; };
+  }, [selectedMediaIndex, mediaItems]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -129,7 +144,13 @@ export const ViewMediaModal = ({
 
     setTransform((prev) => {
       const scaleStep = 0.1;
-      const newScale = Math.max(1, Math.min(prev.scale + (delta > 0 ? scaleStep : -scaleStep) * prev.scale, 5));
+      const newScale = Math.max(
+        1,
+        Math.min(
+          prev.scale + (delta > 0 ? scaleStep : -scaleStep) * prev.scale,
+          5,
+        ),
+      );
 
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
@@ -140,7 +161,11 @@ export const ViewMediaModal = ({
       const newX = mx - (mx - prev.x) * factor;
       const newY = my - (my - prev.y) * factor;
 
-      return { scale: newScale, x: newScale === 1 ? 0 : newX, y: newScale === 1 ? 0 : newY };
+      return {
+        scale: newScale,
+        x: newScale === 1 ? 0 : newX,
+        y: newScale === 1 ? 0 : newY,
+      };
     });
   };
 
@@ -149,7 +174,10 @@ export const ViewMediaModal = ({
       e.stopPropagation();
       e.preventDefault();
       isDragging.current = true;
-      startPan.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
+      startPan.current = {
+        x: e.clientX - transform.x,
+        y: e.clientY - transform.y,
+      };
     }
   };
 
@@ -208,7 +236,10 @@ export const ViewMediaModal = ({
     } else if (e.touches.length === 1 && transform.scale > 1) {
       e.stopPropagation();
       isDragging.current = true;
-      startPan.current = { x: e.touches[0].clientX - transform.x, y: e.touches[0].clientY - transform.y };
+      startPan.current = {
+        x: e.touches[0].clientX - transform.x,
+        y: e.touches[0].clientY - transform.y,
+      };
     }
   };
 
@@ -219,7 +250,10 @@ export const ViewMediaModal = ({
       const t2 = e.touches[1];
       const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
       const scaleFactor = dist / initialPinch.current.dist;
-      const newScale = Math.max(1, Math.min(initialPinch.current.scale * scaleFactor, 5));
+      const newScale = Math.max(
+        1,
+        Math.min(initialPinch.current.scale * scaleFactor, 5),
+      );
 
       const rect = e.currentTarget.getBoundingClientRect();
       const centerClientX = (t1.clientX + t2.clientX) / 2;
@@ -235,9 +269,17 @@ export const ViewMediaModal = ({
         const newX = mx - (mx - prev.x) * factor;
         const newY = my - (my - prev.y) * factor;
 
-        return { scale: newScale, x: newScale === 1 ? 0 : newX, y: newScale === 1 ? 0 : newY };
+        return {
+          scale: newScale,
+          x: newScale === 1 ? 0 : newX,
+          y: newScale === 1 ? 0 : newY,
+        };
       });
-    } else if (e.touches.length === 1 && isDragging.current && transform.scale > 1) {
+    } else if (
+      e.touches.length === 1 &&
+      isDragging.current &&
+      transform.scale > 1
+    ) {
       e.stopPropagation();
       setTransform((prev) => ({
         ...prev,
@@ -257,7 +299,8 @@ export const ViewMediaModal = ({
   };
 
   return (
-    selectedMedia && createPortal(
+    selectedMedia &&
+    createPortal(
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md animate-modal-enter"
         onClick={() => setSelectedMediaIndex(null)}
@@ -335,6 +378,10 @@ export const ViewMediaModal = ({
               label="Size"
               value={formatSize(parseInt(selectedMedia.size))}
             />
+            <DetailItem
+              label="Dimensions"
+              value={`${selectedMedia.width} x ${selectedMedia.height}`}
+            />
           </div>
         </div>
 
@@ -360,8 +407,8 @@ export const ViewMediaModal = ({
                 direction === "right"
                   ? "animate-slide-right"
                   : direction === "left"
-                  ? "animate-slide-left"
-                  : ""
+                    ? "animate-slide-left"
+                    : ""
               }`}
             >
               {selectedMedia.type.startsWith("image/") ? (
@@ -384,10 +431,17 @@ export const ViewMediaModal = ({
                 >
                   <img
                     alt={selectedMedia.filename}
-                    src={`${CONSTANTS.SERVER_URL}/media/view/${selectedMedia.media_id}`}
+                    src={
+                      fullImageLoaded
+                        ? `${CONSTANTS.SERVER_URL}/media/view/${selectedMedia.media_id}`
+                        : `${CONSTANTS.SERVER_URL}/media/thumbnail/${selectedMedia.media_id}`
+                    }
                     className="object-contain shadow-2xl w-full max-h-[80vh] transition-transform duration-20 ease-in-out"
                     draggable={false}
-                    style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, cursor: transform.scale > 1 ? "grab" : "default" }}
+                    style={{
+                      transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                      cursor: transform.scale > 1 ? "grab" : "default",
+                    }}
                   />
                 </div>
               ) : (
@@ -410,16 +464,34 @@ export const ViewMediaModal = ({
         </div>
         <style jsx>{`
           @keyframes modalEnter {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
+            from {
+              opacity: 0;
+              transform: scale(0.95);
+            }
+            to {
+              opacity: 1;
+              transform: scale(1);
+            }
           }
           @keyframes slideInRight {
-            from { opacity: 0; transform: translateX(40px); }
-            to { opacity: 1; transform: translateX(0); }
+            from {
+              opacity: 0;
+              transform: translateX(40px);
+            }
+            to {
+              opacity: 1;
+              transform: translateX(0);
+            }
           }
           @keyframes slideInLeft {
-            from { opacity: 0; transform: translateX(-40px); }
-            to { opacity: 1; transform: translateX(0); }
+            from {
+              opacity: 0;
+              transform: translateX(-40px);
+            }
+            to {
+              opacity: 1;
+              transform: translateX(0);
+            }
           }
           .animate-modal-enter {
             animation: modalEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -432,8 +504,7 @@ export const ViewMediaModal = ({
           }
         `}</style>
       </div>,
-      document.body
+      document.body,
     )
   );
 };
-

@@ -9,30 +9,21 @@ interface ImageItemProps {
 
 export const ImageItem = memo(
   ({ item, priority = false }: ImageItemProps) => {
-    const [loaded, setLoaded] = useState(false);
-
     const thumb = `${CONSTANTS.SERVER_URL}/media/thumbnail/${item.media_id}`;
-    const full = `${CONSTANTS.SERVER_URL}/media/view/${item.media_id}`;
+    const width = Number(item.width) || 1;
+    const height = Number(item.height) || 1;
 
     return (
-      <div className="relative w-full h-full bg-neutral-900">
+      <div className="relative w-full h-full bg-neutral-900 flex items-center justify-center overflow-hidden">
         <img
           src={thumb}
+          width={width}
+          height={height}
           className="w-full h-full object-cover block"
-          loading="lazy"
+          loading={priority ? "eager" : undefined}
+          fetchPriority={priority ? "high" : "auto"}
           decoding="async"
         />
-
-        {/* <img
-          src={full}
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
-            loaded ? "opacity-100" : "opacity-0"
-          }`}
-          loading={priority ? "eager" : "lazy"}
-          decoding="async"
-          onLoad={() => setLoaded(true)}
-          style={{contentVisibility: "auto", containIntrinsicSize: "200px"}}
-        /> */}
       </div>
     );
   },

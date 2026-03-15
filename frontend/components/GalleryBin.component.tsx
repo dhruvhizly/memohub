@@ -13,7 +13,6 @@ import { ImageItem } from "@/components/ImageItem.component";
 import { ConfirmationModal } from "@/components/ConfirmationModal.component";
 import { UserModal } from "@/components/UserModal.component";
 import {
-  BREAKPOINT_MAPPING,
   GRID_MODE_STYLES,
   GallerySkeleton,
   GridControls,
@@ -77,7 +76,10 @@ const GalleryBin = () => {
   const rowVirtualizer = useVirtualizer({
     count: hasMore ? rows.length + 1 : rows.length,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: useCallback(() => GRID_MODE_STYLES[gridCols].estimateHeight, [gridCols]),
+    estimateSize: useCallback(
+      () => GRID_MODE_STYLES[gridCols].estimateHeight,
+      [gridCols],
+    ),
     overscan: 5,
   });
   const PAGE_SIZE = 10;
@@ -255,7 +257,14 @@ const GalleryBin = () => {
     if (lastItem.index >= rows.length - 1 && hasMore && !isLoading) {
       fetchBinMedia(page + 1);
     }
-  }, [rowVirtualizer.getVirtualItems(), rows.length, hasMore, isLoading, fetchBinMedia, page]);
+  }, [
+    rowVirtualizer.getVirtualItems(),
+    rows.length,
+    hasMore,
+    isLoading,
+    fetchBinMedia,
+    page,
+  ]);
 
   useEffect(() => {
     document.body.style.overflow =
@@ -334,7 +343,7 @@ const GalleryBin = () => {
       {/* --- MAIN CONTENT --- */}
       <main
         ref={scrollContainerRef}
-        className="w-full flex-1 overflow-y-auto px-2 md:px-4 pt-4 md:pt-8 pb-32"
+        className="w-full flex-1 overflow-y-auto px-2 md:px-4 pt-4 md:pt-8 pb-32 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-neutral-800 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-neutral-700"
       >
         <div className="w-full space-y-5">
           {/* 1. LOADING STATE */}
@@ -395,8 +404,10 @@ const GalleryBin = () => {
                     const aspect = w > 0 && h > 0 ? w / h : 1;
                     return sum + aspect;
                   }, 0);
-                  const isLastRow = !hasMore && virtualRow.index === rows.length - 1;
-                  const isShortLastRow = isLastRow && sumOfAspects < columnCount;
+                  const isLastRow =
+                    !hasMore && virtualRow.index === rows.length - 1;
+                  const isShortLastRow =
+                    isLastRow && sumOfAspects < columnCount;
 
                   return (
                     <div
@@ -420,7 +431,13 @@ const GalleryBin = () => {
                         const h = Number((item as any).height);
                         const aspect = w > 0 && h > 0 ? w / h : 1;
 
-                        const style = isShortLastRow ? {} : { flexGrow: aspect, flexShrink: 1, flexBasis: "0%" };
+                        const style = isShortLastRow
+                          ? {}
+                          : {
+                              flexGrow: aspect,
+                              flexShrink: 1,
+                              flexBasis: "0%",
+                            };
 
                         return (
                           <div
@@ -440,13 +457,18 @@ const GalleryBin = () => {
                               data-id={item.media_id}
                               onClick={handleCheckboxClick}
                             >
-                              <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isItemSelected ? "bg-blue-500 border-blue-500" : "bg-black/40 border-white/50 backdrop-blur-md"}`}>
+                              <div
+                                className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isItemSelected ? "bg-blue-500 border-blue-500" : "bg-black/40 border-white/50 backdrop-blur-md"}`}
+                              >
                                 {isItemSelected && <CheckBoxTickIcon />}
                               </div>
                             </div>
 
                             {item.type.startsWith("image/") ? (
-                              <ImageItem item={item} priority={virtualRow.index < 2} />
+                              <ImageItem
+                                item={item}
+                                priority={virtualRow.index < 2}
+                              />
                             ) : (
                               <VideoItem item={item} />
                             )}
