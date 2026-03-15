@@ -7,15 +7,15 @@ import { createPortal } from "react-dom";
 export type GridMode = "Comfort" | "Compact" | "Dense";
 
 export const GRID_MODE_STYLES: Record<GridMode, { itemClass: string; estimateHeight: number }> = {
-  Comfort: { itemClass: "h-60", estimateHeight: 240 + 16 }, // 240px
-  Compact: { itemClass: "h-50", estimateHeight: 200 + 16 }, // 200px
-  Dense:   { itemClass: "h-40", estimateHeight: 160 + 16 }, // 160px
+  Comfort: { itemClass: "h-40 md:h-60", estimateHeight: 240 + 16 }, // 240px
+  Compact: { itemClass: "h-24 md:h-50", estimateHeight: 200 + 16 }, // 200px
+  Dense:   { itemClass: "h-20 md:h-40", estimateHeight: 160 + 16 }, // 160px
 };
 
 export const BREAKPOINT_MAPPING = {
-  Comfort: { default: 1, 500: 1, 768: 2, 1024: 3, 1280: 4, 1536: 5, 1920: 7 },
-  Compact: { default: 1, 500: 2, 768: 3, 1024: 4, 1280: 5, 1536: 7, 1920: 8, 2200: 10 },
-  Dense:   { default: 1, 500: 2, 768: 4, 1024: 5, 1280: 7, 1536: 8, 1920: 10 },
+  Comfort: { default: 2, 500: 2, 768: 2, 1024: 3, 1280: 4, 1536: 5, 1920: 7 },
+  Compact: { default: 3, 500: 3, 768: 3, 1024: 4, 1280: 5, 1536: 7, 1920: 8, 2200: 10 },
+  Dense:   { default: 4, 500: 4, 768: 4, 1024: 5, 1280: 7, 1536: 8, 1920: 10 },
 };
 
 const SkeletonItem = ({ height }: { height: number }) => (
@@ -32,9 +32,9 @@ export const GallerySkeleton = ({ mode }: { mode: GridMode }) => {
   const itemsPerCol = 2;
 
   return (
-    <div className="flex w-full" style={{ gap: "16px" }}>
+    <div className="flex w-full gap-1 md:gap-4">
       {Array.from({ length: colCount }).map((_, colIndex) => (
-        <div key={colIndex} className="flex flex-col w-full" style={{ gap: "16px" }}>
+        <div key={colIndex} className="flex flex-col w-full gap-1 md:gap-4">
           {Array.from({ length: itemsPerCol }).map((_, itemIndex) => {
             const height = 180 + Math.random() * 150;
             return <SkeletonItem key={itemIndex} height={height} />;

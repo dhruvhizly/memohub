@@ -294,6 +294,9 @@ const GalleryGrid = () => {
   );
 
   useEffect(() => {
+    if (window.innerWidth < 768) {
+      setGridCols("Comfort");
+    }
     fetchMedia(1, true);
     setMounted(true);
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -413,7 +416,7 @@ const GalleryGrid = () => {
       {/* --- MAIN CONTENT --- */}
       <main
         ref={scrollContainerRef}
-        className="w-full flex-1 overflow-y-auto px-2 md:px-4 pt-4 md:pt-8 pb-32 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-neutral-800 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-neutral-700"
+        className="w-full flex-1 overflow-y-auto px-1 md:px-4 pt-2 md:pt-8 pb-32 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-neutral-800 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-neutral-700"
       >
         <div className="w-full space-y-12">
           {/* 1. LOADING STATE */}
@@ -461,17 +464,13 @@ const GalleryGrid = () => {
                     <div
                       key={row.label}
                       data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      className="absolute top-0 left-0 w-full will-change-transform"
                       style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        width: "100%",
-                        height: "64px",
-                        willChange: "transform",
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
                     >
-                      <div className="flex items-center gap-3 py-1 border-l-4 border-blue-600 pl-3 mt-6">
+                      <div className="flex items-center gap-3 py-1 border-l-4 border-blue-600 pl-3 mt-4 md:mt-6 mb-2">
                         {isSelectionMode && (
                           <button
                             onClick={() => toggleGroupSelection(row.items)}
@@ -509,16 +508,10 @@ const GalleryGrid = () => {
                   <div
                     key={virtualRow.key}
                     data-index={virtualRow.index}
+                    ref={rowVirtualizer.measureElement}
+                    className="absolute top-0 left-0 w-full flex gap-1 md:gap-4 pb-1 md:pb-4 will-change-transform"
                     style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
                       transform: `translateY(${virtualRow.start}px)`,
-                      display: "flex",
-                      gap: "16px",
-                      paddingBottom: "16px",
-                      willChange: "transform",
                     }}
                   >
                     {row.items.map((item) => {
@@ -538,7 +531,7 @@ const GalleryGrid = () => {
                           onClick={handleItemClick}
                           onContextMenu={handleItemContextMenu}
                           style={style}
-                          className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} overflow-hidden rounded-xl bg-neutral-900 border transition-[transform,box-shadow,border-color] duration-200 cursor-pointer group ${isItemSelected ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]" : "border-neutral-800 hover:border-neutral-600"}`}
+                          className={`relative ${GRID_MODE_STYLES[gridCols].itemClass} overflow-hidden rounded-md md:rounded-xl bg-neutral-900 border transition-[transform,box-shadow,border-color] duration-200 cursor-pointer group ${isItemSelected ? "border-blue-500 ring-4 ring-blue-500/30 scale-[0.98]" : "border-neutral-900 md:border-neutral-800 hover:border-neutral-600"}`}
                         >
                           <div
                             className={`absolute top-2 left-2 z-30 transition-opacity ${isItemSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 hidden md:block"}`}
